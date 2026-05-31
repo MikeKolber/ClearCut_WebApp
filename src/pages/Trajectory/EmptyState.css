@@ -1,0 +1,119 @@
+/*
+  Shared empty-state panel for the trajectory result pages.
+
+  This component is dropped *inside* each page's existing positioning
+  wrapper (TP-chart-empty / MV-empty / RD-empty), which already handles
+  centering + sizing. The styles below shape the visible content card,
+  with high-specificity selectors so the wrappers' inherited mono /
+  small font don't bleed through into our typography.
+*/
+
+.TR-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  box-sizing: border-box;
+}
+
+.TR-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  max-width: 420px;
+  padding: 32px 36px 30px;
+  /* Solid dark surface with backdrop blur so the card stays readable
+     on any background — including the busy dark map tiles on the Map
+     View. Matches the top-screen ErrorToast's frosted look so the
+     two empty/error surfaces feel like the same family. */
+  background: rgba(18, 16, 19, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 18px 44px -16px rgba(0, 0, 0, 0.7),
+    0 6px 20px -6px rgba(0, 0, 0, 0.6);
+  /* Faint inner sheen on the top edge — small detail, makes the card
+     feel slightly raised against the page bg. */
+  position: relative;
+  overflow: hidden;
+
+  /* Override any inherited mono / small typography from the
+     positioning wrapper — empty state has its own type system. */
+  font-family: var(--font, system-ui), 'Inter', sans-serif;
+  font-size: 14px;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.TR-empty-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% -10%,
+      rgba(77, 168, 218, 0.10) 0%,
+      rgba(77, 168, 218, 0)   60%);
+  opacity: 0.7;
+}
+
+.TR-empty-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 80px;
+  margin-bottom: 4px;
+  color: var(--accent, #4DA8DA);
+  /* Subtle ambient glow behind the rocket so it doesn't float in
+     space alone. The rocket itself carries the animated motion
+     (trembling body, flickering flame, smoke puffs) so we don't
+     also breathe the outer container — they'd fight each other. */
+  background:
+    radial-gradient(closest-side,
+      rgba(77, 168, 218, 0.12) 0%,
+      rgba(77, 168, 218, 0.04) 60%,
+      rgba(77, 168, 218, 0)    100%);
+  border-radius: 50%;
+}
+
+/* The shared StuckRocket is 42×58 by default; scale it up here so
+   it reads at empty-state card size without re-defining the SVG. */
+.TR-empty-glyph .error-toast-rocket {
+  width: 52px;
+  height: 72px;
+}
+
+.TR-empty-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.TR-empty-body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary, #b6bcc7);
+  font-weight: 400;
+  max-width: 340px;
+}
+
+.TR-empty-hint {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  letter-spacing: var(--tracking-mid, 0.06em);
+  text-transform: uppercase;
+  color: var(--text-dim, #6b7280);
+  font-weight: 500;
+}

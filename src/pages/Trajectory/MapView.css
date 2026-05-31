@@ -1,0 +1,753 @@
+/* ═══ Map View page ═══════════════════════════════════════════════
+ *   Sidebar (run info / view / layers / fit-to) + full-bleed
+ *   MapLibre canvas. Visual language matches TrajectoryPlot for
+ *   consistency.                                                    */
+
+/* Status text in TopBar's right slot */
+.MV-status {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MV-status--err { color: #ef4444; }
+
+/* ─── Main grid ────────────────────────────────────────────── */
+
+.MV-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 0 18px;        /* full-bleed */
+  min-height: 0;
+}
+
+@media (max-width: 880px) {
+  .MV-main { grid-template-columns: 1fr; }
+}
+
+/* ─── Sidebar ──────────────────────────────────────────────── */
+
+.MV-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 14px 16px;
+  min-height: 460px;
+  max-height: calc(100vh - 86px);
+  overflow-y: auto;
+}
+
+.MV-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.MV-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.MV-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ─── Run info card at the top of the sidebar ─────────────── */
+
+.MV-runinfo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--bg-card-2, #11151a);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.MV-runinfo-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 10px;
+  font-size: 11px;
+  align-items: baseline;
+}
+
+.MV-runinfo-key {
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 9px;
+  font-feature-settings: 'tnum' 1;
+}
+
+.MV-runinfo-val {
+  color: var(--text);
+  font-feature-settings: 'tnum' 1;
+}
+
+.MV-runinfo-status {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* ─── Toggle rows (checkbox + radio share these styles) ───── */
+
+.MV-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+  user-select: none;
+}
+
+.MV-row:hover { background: var(--bg-hover); }
+
+.MV-row--on { background: rgba(255, 255, 255, 0.02); border-color: var(--border); }
+
+.MV-row--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.MV-row--disabled:hover { background: transparent; }
+
+.MV-row-cb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  cursor: inherit;
+  position: relative;
+  flex-shrink: 0;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.MV-row-cb:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.MV-row-cb:checked::after {
+  content: '';
+  position: absolute;
+  left: 2.5px;
+  top: 0px;
+  width: 4px;
+  height: 7px;
+  border-right: 1.5px solid var(--bg);
+  border-bottom: 1.5px solid var(--bg);
+  transform: rotate(45deg);
+}
+
+.MV-row-cb--radio { border-radius: 50%; }
+.MV-row-cb--radio:checked::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 6px;
+  height: 6px;
+  border: 0;
+  background: var(--bg);
+  border-radius: 50%;
+  transform: none;
+}
+
+.MV-row-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: box-shadow 160ms ease;
+}
+
+.MV-row-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.MV-row--on .MV-row-label { color: var(--text); }
+
+.MV-row-hint {
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* ─── Fit-to buttons ──────────────────────────────────────── */
+
+.MV-fitBtn {
+  appearance: none;
+  height: 30px;
+  padding: 0 12px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.MV-fitBtn:hover:not(:disabled) {
+  background: rgba(77, 168, 218, 0.08);
+  border-color: rgba(77, 168, 218, 0.55);
+  color: var(--accent);
+}
+
+.MV-fitBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.MV-fitBtn--ghost {
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+.MV-fitBtn--ghost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+/* ─── Canvas wrapper ──────────────────────────────────────── */
+
+.MV-canvas-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  max-height: calc(100vh - 86px);
+  overflow: hidden;
+  position: relative;
+}
+
+.MV-canvas {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+/* Map3D (deck.gl GlobeView) host — "Earth in space" composite.
+   The wrap paints the deep-space gradient, the Starfield SVG sits on
+   top of that, and the deck.gl canvas (transparent clear color)
+   layers on top of everything else. The mount div hosts the canvas
+   so React doesn't try to reconcile the imperative <canvas>. */
+.MV-canvas--3d {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+  /* Deep-space backdrop. Two faint nebula tints (cooler blue, dimmer
+     violet) plus an almost-pure-black core. The tints stay subtle so
+     the planet stays the visual focus and the stars actually read. */
+  background:
+    radial-gradient(ellipse at 28% 20%, rgba(20, 40, 80, 0.18) 0%, transparent 40%),
+    radial-gradient(ellipse at 78% 78%, rgba(50, 25, 90, 0.12) 0%, transparent 42%),
+    radial-gradient(ellipse at 50% 50%, #02050b 0%, #01020a 55%, #000000 100%);
+}
+.MV-canvas--3d:active { cursor: grabbing; }
+
+/* Procedural starfield — sits behind the deck.gl canvas. We don't
+   apply a `filter: drop-shadow(...)` here on purpose: combining a
+   filter with the opacity twinkle below forces the browser to
+   re-rasterize all 240 SVG circles on every keyframe step, which
+   drives non-trivial CPU usage even when nothing else is animating.
+   Pure-opacity animation stays composited on the GPU and is free. */
+.MV-stars {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  will-change: opacity;
+  animation: MV-stars-twinkle 6.5s ease-in-out infinite alternate;
+}
+@keyframes MV-stars-twinkle {
+  0%   { opacity: 0.85; }
+  50%  { opacity: 1;    }
+  100% { opacity: 0.92; }
+}
+
+/* deck.gl canvas mount. The basemap dim/tint is now applied at the
+   shader level (BitmapLayer.tintColor in Map3D.js) instead of via
+   a CSS canvas filter — a CSS filter recomposites the entire
+   viewport every frame, which was the single largest GPU cost
+   during playback. */
+.MV-canvas-3d-mount {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.MV-canvas-3d-mount canvas {
+  outline: none;
+}
+
+/* Tiny attribution chip in the bottom-right (ESRI requires it). */
+.MV-attrib {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  padding: 2px 7px;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: rgba(232, 238, 247, 0.55);
+  background: rgba(15, 18, 23, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ─── Playback panel (rocket follow-cam) ─────────────────────── */
+.MV-playback {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(11, 17, 24, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 200, 100, 0.18);
+  border-radius: 999px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  font-family: var(--font-mono);
+  z-index: 30;
+  user-select: none;
+}
+
+.MV-pb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 200, 100, 0.24);
+  background: rgba(255, 200, 100, 0.06);
+  color: #ffd58a;
+  cursor: pointer;
+  transition: background-color 120ms ease, transform 120ms ease, color 120ms ease;
+}
+.MV-pb-btn:hover:not(:disabled) {
+  background: rgba(255, 200, 100, 0.14);
+  color: #ffe9b8;
+}
+.MV-pb-btn:active:not(:disabled) { transform: scale(0.96); }
+.MV-pb-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.MV-pb-play {
+  width: 40px;
+  height: 40px;
+  border-color: rgba(255, 200, 100, 0.45);
+  background: linear-gradient(180deg, #fbcb6b 0%, #e8a430 100%);
+  color: #0b1118;
+  box-shadow: 0 0 18px rgba(255, 200, 100, 0.35);
+}
+.MV-pb-play:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffd784 0%, #f3b343 100%);
+  color: #0b1118;
+}
+.MV-pb-play--on {
+  /* When playing, the button glows softly in sync with the rocket
+     beacon — same ~1.7s breath cycle as the rocket halos. */
+  background: linear-gradient(180deg, #f3b343 0%, #c98615 100%);
+  animation: MV-pb-play-pulse 1.7s ease-in-out infinite;
+}
+@keyframes MV-pb-play-pulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(255, 200, 100, 0.30); }
+  50%      { box-shadow: 0 0 24px rgba(255, 200, 100, 0.65), 0 0 38px rgba(255, 200, 100, 0.18); }
+}
+
+.MV-pb-stop {
+  color: #c4d0dc;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+.MV-pb-stop:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ff8b8b;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.MV-pb-bar {
+  position: relative;
+  width: 240px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  outline: none;
+}
+.MV-pb-bar::before {
+  /* Track */
+  content: '';
+  position: absolute;
+  inset: 7px 0;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.MV-pb-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  background: linear-gradient(90deg, #ffc864 0%, #ffe28a 100%);
+  border-radius: 4px;
+  pointer-events: none;
+  box-shadow: 0 0 10px rgba(255, 200, 100, 0.35);
+}
+.MV-pb-bar-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff0b4;
+  border: 1.5px solid #0b1118;
+  box-shadow: 0 0 8px rgba(255, 200, 100, 0.55);
+  transform: translateX(-6px);
+  top: 3px;
+  pointer-events: none;
+  transition: width 120ms ease, height 120ms ease;
+}
+.MV-pb-bar:hover .MV-pb-bar-handle,
+.MV-pb-bar:focus-visible .MV-pb-bar-handle {
+  width: 14px;
+  height: 14px;
+  top: 2px;
+  transform: translateX(-7px);
+}
+
+.MV-pb-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary, #c4d0dc);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  min-width: 96px;
+  justify-content: center;
+}
+.MV-pb-time-sep {
+  color: rgba(255, 255, 255, 0.25);
+  margin: 0 2px;
+}
+
+.MV-pb-speeds {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+.MV-pb-speed {
+  appearance: none;
+  border: 0;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  background: transparent;
+  color: var(--text-dim, #8895a6);
+  border-radius: 999px;
+  cursor: pointer;
+  min-width: 28px;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+.MV-pb-speed:hover { color: #e8eef7; }
+.MV-pb-speed--on {
+  background: rgba(255, 200, 100, 0.16);
+  color: #ffd58a;
+  box-shadow: 0 0 0 1px rgba(255, 200, 100, 0.35) inset;
+}
+
+/* Compact down to phone widths — sidebar already collapses there. */
+@media (max-width: 760px) {
+  .MV-pb-bar    { width: 140px; }
+  .MV-pb-time   { min-width: 80px; }
+  .MV-playback  { gap: 8px; padding: 6px 10px; }
+}
+
+.MV-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  text-align: center;
+  padding: 24px;
+}
+
+/* ─── MapLibre control overrides ──────────────────────────── */
+
+/*  Soften MapLibre's default white nav controls so they fit the
+ *  app's dark chrome. */
+.MV-canvas-wrap .maplibregl-ctrl-group {
+  background: rgba(15, 18, 23, 0.92) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+}
+.MV-canvas-wrap .maplibregl-ctrl-group button {
+  background-color: transparent !important;
+  filter: invert(1) hue-rotate(180deg) brightness(1.05);
+}
+.MV-canvas-wrap .maplibregl-ctrl-group button:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+.MV-canvas-wrap .maplibregl-ctrl-attrib {
+  background: rgba(15, 18, 23, 0.85) !important;
+  color: var(--text-dim) !important;
+  font-size: 9px !important;
+}
+.MV-canvas-wrap .maplibregl-ctrl-attrib a {
+  color: var(--text-secondary) !important;
+}
+
+/* Popups (used in Layer 2 for impact / origin info) — match the dark theme. */
+.MV-canvas-wrap .maplibregl-popup-content {
+  background: var(--bg-card-2, #11151a) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: var(--radius-sm) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  padding: 10px 12px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55) !important;
+}
+.MV-canvas-wrap .maplibregl-popup-tip {
+  border-top-color: var(--bg-card-2, #11151a) !important;
+  border-bottom-color: var(--bg-card-2, #11151a) !important;
+}
+.MV-canvas-wrap .maplibregl-popup-close-button {
+  color: var(--text-secondary) !important;
+  font-size: 16px !important;
+  padding: 2px 6px !important;
+}
+.MV-canvas-wrap .maplibregl-popup-close-button:hover {
+  background: rgba(239, 68, 68, 0.16) !important;
+  color: #ef4444 !important;
+}
+
+/* ─── Popup content ───────────────────────────────────────── */
+
+.MV-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.MV-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.MV-pop-tag {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 3px 6px;
+  border-radius: 3px;
+  background: rgba(167, 139, 250, 0.14);
+  color: #a78bfa;
+}
+.MV-pop-tag--harmful {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ff8a96;
+}
+.MV-pop-tag--origin {
+  background: rgba(245, 158, 11, 0.16);
+  color: var(--warning);
+}
+
+.MV-pop-row {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: auto;
+}
+
+.MV-pop-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 12px;
+  font-size: 11px;
+  font-feature-settings: 'tnum' 1;
+}
+
+.MV-pop-grid > span:nth-child(odd) {
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+.MV-pop-grid > span:nth-child(even) {
+  color: var(--text);
+  text-align: right;
+}
+
+.MV-pop-harmful { color: #ff8a96 !important; }
+
+/* ─── Debris stats card (sidebar) ─────────────────────────── */
+
+.MV-debrisstats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.30);
+  border-radius: var(--radius-sm);
+}
+
+.MV-debrisstats-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 10px;
+  font-size: 11px;
+  align-items: baseline;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ─── Failure-points list (sidebar) ───────────────────────── */
+
+.MV-section-count {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: var(--tracking-wide);
+  font-feature-settings: 'tnum' 1;
+}
+
+.MV-fpsection {
+  /* Cap height so the list scrolls when there are many rows but the
+   * sidebar doesn't grow without bound. */
+  min-height: 0;
+  flex: 0 1 auto;
+}
+
+.MV-fplist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  /* Tight scrollbars to match the sidebar's narrow real estate. */
+  scrollbar-width: thin;
+}
+
+.MV-fp {
+  appearance: none;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 32px 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  font-family: var(--font-sans);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.MV-fp:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.MV-fp--on {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.55);
+}
+.MV-fp--on.MV-fp--harmful {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.MV-fp-num {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+}
+.MV-fp--on .MV-fp-num {
+  color: var(--warning);
+}
+.MV-fp--on.MV-fp--harmful .MV-fp-num {
+  color: #ff8a96;
+}
+
+.MV-fp-time {
+  font-size: 11px;
+  color: var(--text);
+  font-feature-settings: 'tnum' 1;
+}
+
+.MV-fp-stats {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: flex-end;
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-feature-settings: 'tnum' 1;
+}
+
+.MV-fp-stats-unit {
+  margin-left: 1px;
+  color: var(--text-dim);
+  font-size: 9px;
+}

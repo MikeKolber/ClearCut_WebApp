@@ -1,0 +1,615 @@
+/* ─── Status (right slot of TopBar) ─────────────────────────────── */
+
+.TA-status {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Main grid ───────────────────────────────────────────────── */
+
+.TA-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 24px 18px;
+  min-height: 0;
+}
+
+@media (max-width: 880px) {
+  .TA-main { grid-template-columns: 1fr; }
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────── */
+
+.TA-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  overflow: hidden;
+  max-height: calc(100vh - 86px);
+}
+
+.TA-section {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+}
+
+.TA-section:last-child { border-bottom: none; }
+
+.TA-section--scroll { min-height: 0; }
+.TA-section--grow   { flex: 1; }
+
+.TA-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+}
+
+.TA-count {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+}
+
+.TA-section-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.TA-actionBtn {
+  height: 22px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.TA-actionBtn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+}
+
+.TA-test-name {
+  padding: 0 14px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  word-wrap: break-word;
+}
+
+.TA-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 6px 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.TA-list--channels {
+  flex: 1;
+}
+
+.TA-listItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.TA-listItem:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.TA-listItem--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.TA-listItem-name {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.TA-listItem--active .TA-listItem-name { color: var(--accent-bright); }
+
+.TA-listItem:disabled { opacity: 0.5; cursor: progress; }
+
+/* ─── Channel rows ─────────────────────────────────────────────── */
+
+.TA-channel {
+  border-radius: 2px;
+  transition: background 120ms ease;
+}
+
+.TA-channel:hover { background: var(--bg-hover); }
+
+.TA-channel--on {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.TA-channel-row {
+  display: grid;
+  grid-template-columns: 14px 8px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.TA-channel-cb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  position: relative;
+}
+.TA-channel-cb:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.TA-channel-cb:checked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(45deg, transparent 45%, var(--bg) 45%, var(--bg) 55%, transparent 55%) -2px 1px / 8px 2px no-repeat,
+    linear-gradient(-45deg, transparent 45%, var(--bg) 45%, var(--bg) 55%, transparent 55%) 2px 1px / 4px 2px no-repeat;
+}
+
+.TA-channel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.TA-channel-name {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.TA-channel--on .TA-channel-name { color: var(--text); }
+
+.TA-channel-len {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+/* Expanded section when channel is checked: BL row + global μ pills row */
+.TA-channel-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px 6px 30px;
+  animation: TA-expand 160ms ease;
+}
+
+.TA-channel-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@keyframes TA-expand {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.TA-channel-tag {
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+}
+
+.TA-channel-bl {
+  width: 70px;
+  height: 22px;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.TA-channel-bl::placeholder { color: var(--text-dim); }
+.TA-channel-bl:hover  { border-color: var(--border-strong); }
+.TA-channel-bl:focus  { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.TA-channel-pick {
+  height: 22px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.TA-channel-pick:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* "+ Range" button per-channel (creates a scoped range) */
+.TA-channel-mark {
+  height: 22px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-mid);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.TA-channel-mark:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+}
+
+.TA-channel-mark--picking {
+  border-style: solid;
+  background: rgba(255, 255, 255, 0.04);
+  animation: TA-mark-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes TA-mark-pulse {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.5); }
+}
+
+/* Inline scoped-range chip on a channel row */
+.TA-channel-rangeChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 4px 0 6px;
+  border: 1px solid;
+  border-radius: 2px;
+  /* borderColor + background set inline per-range */
+}
+
+.TA-channel-rangeChip-bar {
+  width: 3px;
+  height: 12px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.TA-channel-rangeChip-info {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.TA-channel-rangeChip-info:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.TA-channel-rangeChip-avg {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.TA-channel-rangeChip-x {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.TA-channel-rangeChip-x:hover {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.TA-channel-avgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.TA-channel-avg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1px solid;
+  border-radius: 2px;
+  /* color/background/borderColor set inline per-range */
+}
+
+.TA-channel-avg-tag {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+/* ─── Empty state ─────────────────────────────────────────────── */
+
+.TA-empty {
+  padding: 20px 12px;
+  font-size: 10px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ─── Chart pane ───────────────────────────────────────────────── */
+
+.TA-chart {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  max-height: calc(100vh - 86px);
+  overflow: hidden;
+}
+
+.TA-chart-canvas {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.TA-chart-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+}
+
+/* ─── Chart toolbar ─────────────────────────────────────────────── */
+
+.TA-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
+  flex-shrink: 0;
+}
+
+.TA-tbtn {
+  height: 26px;
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.TA-tbtn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+}
+
+.TA-tbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.TA-tbtn--on {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.TA-tbtn--ghost {
+  border-color: var(--border);
+}
+
+.TA-tbtn--danger {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+.TA-tbtn--danger:hover:not(:disabled) {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: none;
+}
+
+.TA-toolbar-spacer { flex: 1; }
+
+/* ─── Range chips (one per active range) ─────────────────────── */
+
+.TA-range-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  /* borderColor + background set inline per-range */
+}
+
+.TA-range-chip--picking {
+  animation: TA-chip-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes TA-chip-pulse {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.4); }
+}
+
+.TA-range-chip-bar {
+  width: 3px;
+  height: 14px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.TA-range-chip-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-mid);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  /* color set inline per-range */
+}
+
+.TA-range-chip-label:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.TA-range-chip-input {
+  width: 64px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  outline: none;
+}
+
+.TA-range-chip-info {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.TA-range-chip-len {
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.TA-range-chip-x {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.TA-range-chip-x:hover {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+/* ─── Force-kill any white SVG strokes Plotly might still draw ───
+   Plotly sometimes paints a white "halo" line behind the spike for
+   visibility. We don't want that — override every variant of white. */
+
+.TA-chart svg .spikeline {
+  stroke: #2a3a4a !important;
+  stroke-opacity: 1 !important;
+}
+
+.TA-chart svg [stroke="white"],
+.TA-chart svg [stroke="#fff"],
+.TA-chart svg [stroke="#FFF"],
+.TA-chart svg [stroke="#ffffff"],
+.TA-chart svg [stroke="#FFFFFF"],
+.TA-chart svg [stroke="rgb(255, 255, 255)"],
+.TA-chart svg [stroke="rgb(255,255,255)"] {
+  stroke: transparent !important;
+}

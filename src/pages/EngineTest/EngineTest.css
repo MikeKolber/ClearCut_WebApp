@@ -1,0 +1,445 @@
+.ET-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 24px 18px;
+  min-height: 0;
+}
+
+@media (max-width: 880px) {
+  .ET-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Sidebar (test list) ──────────────────────────────────────── */
+
+.ET-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  overflow: hidden;
+}
+
+.ET-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ET-sidebar-count {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+}
+
+.ET-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  max-height: calc(100vh - 152px);
+}
+
+.ET-listItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 9px 10px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.ET-listItem:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.ET-listItem--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.ET-listItem-name {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ET-listItem-counts {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.ET-listItem--active .ET-listItem-counts {
+  color: var(--accent-bright);
+}
+
+.ET-listMessage {
+  padding: 30px 12px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ─── Detail (right pane) ─────────────────────────────────────── */
+
+.ET-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 22px 20px;
+  min-height: 460px;
+  max-height: calc(100vh - 86px);
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Errors now surface via the shared ErrorToast (top-screen pop). */
+
+.ET-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+}
+
+/* "No test selected" empty card — same dark frosted surface +
+   animated rocket as the trajectory result pages. Visually announces
+   the same "nothing here yet, pick something first" idea so the
+   user's mental model carries across modules. */
+.ET-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 24px;
+}
+
+.ET-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  max-width: 380px;
+  padding: 30px 32px 28px;
+  background: rgba(18, 16, 19, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 32px -16px rgba(0, 0, 0, 0.65);
+  font-family: var(--font-sans);
+}
+
+.ET-empty-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 70px;
+  margin-bottom: 4px;
+  background:
+    radial-gradient(closest-side,
+      rgba(77, 168, 218, 0.10) 0%,
+      rgba(77, 168, 218, 0)    100%);
+  border-radius: 50%;
+}
+.ET-empty-glyph .error-toast-rocket {
+  width: 44px;
+  height: 62px;
+}
+
+.ET-empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.ET-empty-body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 320px;
+}
+
+.ET-detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ET-detail-title {
+  margin: 2px 0 0;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-shadow: var(--shadow-text-md);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ET-detail-stats {
+  margin: 2px 0 0;
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+}
+
+/* ─── Tool cards (compact horizontal pills) ───────────────────── */
+
+.ET-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .ET-cards { grid-template-columns: 1fr; }
+}
+
+.ET-card {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--bg-card-2);
+  border: 1px solid rgba(77, 168, 218, 0.22);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  color: inherit;
+  text-align: left;
+  overflow: hidden;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 200ms ease;
+}
+
+.ET-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  transform: scaleY(0.45);
+  transform-origin: center;
+  opacity: 0.7;
+  transition:
+    transform 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 180ms ease;
+}
+
+.ET-card:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  box-shadow: 0 6px 22px -10px var(--accent-glow);
+}
+
+.ET-card:hover:not(:disabled)::after { transform: scaleY(1); opacity: 1; }
+
+.ET-card:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ET-card-glyph {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+  background: var(--accent-soft);
+  border: 1px solid rgba(77, 168, 218, 0.35);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  transition:
+    color 200ms ease,
+    border-color 200ms ease,
+    background 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.ET-card:hover:not(:disabled) .ET-card-glyph {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+  background: rgba(77, 168, 218, 0.16);
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+.ET-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ET-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ET-card-subtitle {
+  font-size: 11px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ET-card-arrow {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--accent);
+  transition: color 200ms ease, transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ET-card:hover:not(:disabled) .ET-card-arrow {
+  color: var(--accent-bright);
+  transform: translateX(3px);
+}
+
+/* ─── File browser ─────────────────────────────────────────────── */
+
+.ET-files {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .ET-files { grid-template-columns: 1fr; }
+}
+
+.ET-files-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-card-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color 160ms ease;
+}
+
+.ET-files-col:hover { border-color: var(--border-strong); }
+
+.ET-files-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ET-files-count {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+}
+
+.ET-files-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  scrollbar-gutter: stable;
+}
+
+/*
+  File rows in the Engine Test browser are display-only labels (same
+  semantics as the desktop's CTkLabel list). The previous version had
+  hover styles that made them look interactive and produced a "why
+  doesn't anything happen when I click?" moment. Hover styles removed
+  so the rows read unambiguously as static info.
+*/
+.ET-files-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.ET-files-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ET-files-size {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+}
+
+.ET-files-empty {
+  padding: 28px 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  letter-spacing: var(--tracking-mid);
+}

@@ -1,0 +1,199 @@
+/* ─── Section header (widgets.add_section port) ─────────────────── */
+
+.Section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 4px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.Section-mark {
+  width: 2px;
+  height: 12px;
+}
+
+.Section-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-secondary);
+}
+
+/* ─── Param row (horizontal: label ← input →) ─────────────────── */
+
+.Param {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.05fr);
+  align-items: center;
+  gap: 12px;
+  padding: 4px 6px;
+  cursor: default;
+}
+
+.Param-label {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-secondary);
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+/* Inputs */
+.Param-input-wrap {
+  position: relative;
+  display: block;
+}
+
+.Param-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.Param-input--with-unit { padding-right: 50px; }
+
+.Param-input::placeholder { color: var(--text-dim); }
+
+.Param-input:hover { border-color: var(--border-strong); }
+
+.Param-input:focus {
+  border-color: var(--accent);
+  background: #000;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.Param-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.Param-input--error { border-color: var(--error); }
+
+.Param-unit {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--tracking-mid);
+  text-transform: lowercase;
+  color: var(--text-dim);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Selects */
+.Param-select-wrap {
+  position: relative;
+  display: block;
+}
+
+.Param-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 30px;
+  padding: 0 28px 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.Param-select:hover { border-color: var(--border-strong); }
+.Param-select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.Param-select:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.Param-select-arrow {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+/* ─── Checkbox ─────────────────────────────────────────────────── */
+
+.Check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.Check--disabled { opacity: 0.5; cursor: not-allowed; }
+
+.Check-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.Check-box {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.Check-box::after {
+  content: '';
+  width: 7px;
+  height: 3px;
+  border: 2px solid var(--bg);
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg) translate(1px, -1px);
+  opacity: 0;
+}
+
+.Check-input:checked + .Check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.Check-input:checked + .Check-box::after { opacity: 1; }
+
+.Check-input:focus-visible + .Check-box {
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.Check-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* When the form is narrow (mobile, tight tablet), fall back to stacked rows */
+@media (max-width: 520px) {
+  .Param {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

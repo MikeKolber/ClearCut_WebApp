@@ -1,0 +1,579 @@
+/* ─── Status (right slot of TopBar) ─────────────────────────────── */
+
+.TP-status {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.TP-status--err { color: #ef4444; }
+
+/* Jump-tab styles live in JumpTabs.css (shared with the trajectory
+ * page) — page-specific bits like .TP-status responsive collapse stay
+ * here. */
+@media (max-width: 720px) {
+  .TP-status { display: none; }
+}
+
+/* ─── Main grid ─────────────────────────────────────────────────── */
+
+.TP-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 0 18px;        /* full-bleed */
+  min-height: 0;
+}
+
+@media (max-width: 880px) {
+  .TP-main { grid-template-columns: 1fr; }
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────── */
+
+.TP-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  overflow: hidden;
+  max-height: calc(100vh - 86px);
+}
+
+.TP-section {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+}
+
+.TP-section:last-child { border-bottom: none; }
+
+.TP-section--scroll { min-height: 0; }
+.TP-section--grow   { flex: 1; }
+
+.TP-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+}
+
+.TP-section-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.TP-actionBtn {
+  height: 22px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.TP-actionBtn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+}
+
+/* ─── X-axis dropdown ──────────────────────────────────────────── */
+
+.TP-x-wrap {
+  padding: 0 14px 12px;
+}
+
+.TP-x-select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 30px;
+  padding: 0 28px 0 10px;
+  font-size: 11px;
+  color: var(--text);
+  background:
+    var(--bg-input)
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23a3a3a3' stroke-width='1.2' fill='none'/></svg>")
+    no-repeat right 10px center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.TP-x-select:hover  { border-color: var(--border-strong); }
+.TP-x-select:focus  { border-color: var(--accent); }
+
+/* X-axis upper-limit slider (under the dropdown). */
+
+.TP-x-slider-wrap {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.TP-x-slider-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 9px;
+}
+
+.TP-x-slider-label {
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.TP-x-slider-value {
+  font-size: 11px;
+  color: var(--accent-bright);
+  font-feature-settings: 'tnum' 1;
+}
+
+.TP-x-slider-unit {
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+}
+
+.TP-x-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.TP-x-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--accent-glow);
+  transition: transform 120ms ease;
+}
+
+.TP-x-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.TP-x-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.TP-x-slider-bounds {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9px;
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+}
+
+.TP-x-slider-reset {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.TP-x-slider-reset:hover:not(:disabled) {
+  color: var(--accent-bright);
+}
+
+.TP-x-slider-reset:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ─── Y-axis channel list ──────────────────────────────────────── */
+
+.TP-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 6px 8px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.TP-channel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.TP-channel:hover {
+  background: var(--bg-hover);
+}
+
+.TP-channel--on {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--border);
+}
+
+.TP-channel-cb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 120ms ease, background 120ms ease;
+  flex-shrink: 0;
+}
+
+.TP-channel-cb:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.TP-channel-cb:checked::after {
+  content: '';
+  position: absolute;
+  left: 2.5px;
+  top: 0px;
+  width: 4px;
+  height: 7px;
+  border-right: 1.5px solid var(--bg);
+  border-bottom: 1.5px solid var(--bg);
+  transform: rotate(45deg);
+}
+
+.TP-channel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: box-shadow 160ms ease;
+}
+
+.TP-channel-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 120ms ease;
+}
+
+.TP-channel--on .TP-channel-name {
+  color: var(--text);
+}
+
+.TP-channel-unit {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+/* ─── Empty / loading slug ─────────────────────────────────────── */
+
+.TP-empty {
+  padding: 22px 12px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ─── Chart pane ───────────────────────────────────────────────── */
+
+.TP-chart {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  max-height: calc(100vh - 86px);
+  overflow: hidden;
+}
+
+.TP-chart-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* ─── Sidebar footer (Overlay button) ──────────────────────────── */
+
+.TP-sidebar-foot {
+  flex-shrink: 0;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}
+
+.TP-overlay-btn {
+  width: 100%;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 18px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.TP-overlay-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--border-bright);
+}
+
+.TP-overlay-btn:disabled {
+  opacity: 0.40;
+  cursor: not-allowed;
+}
+
+.TP-overlay-btn-glyph {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.TP-overlay-btn-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-feature-settings: 'tnum' 1;
+  background: rgba(255, 255, 255, 0.10);
+  color: var(--text);
+  border-radius: 999px;
+}
+
+.TP-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  text-align: center;
+  padding: 24px;
+}
+
+/* Plotly hover-text border tweak so the cool grey label doesn't get a
+ * white halo on dark backgrounds. */
+.TP-chart .hovertext path { stroke: #2a3038 !important; }
+
+/* Kill any Plotly-injected white strokes — covers all the formats Plotly
+ * emits (named, hex, rgb), inline-style strokes, plus the `.crisp` /
+ * `.hoverlayer line` classes used for the hover crosshair which doesn't
+ * honor the axis `spikecolor` setting. */
+.TP-chart svg [stroke="white"],
+.TP-chart svg [stroke="#fff"],
+.TP-chart svg [stroke="#FFFFFF"],
+.TP-chart svg [stroke="#ffffff"],
+.TP-chart svg [stroke="rgb(255, 255, 255)"],
+.TP-chart svg [stroke="rgb(255,255,255)"]   { stroke: #2a3a4a !important; }
+
+.TP-chart svg [style*="stroke: white"],
+.TP-chart svg [style*="stroke:white"],
+.TP-chart svg [style*="stroke: #fff"],
+.TP-chart svg [style*="stroke:#fff"],
+.TP-chart svg [style*="stroke: rgb(255"],
+.TP-chart svg [style*="stroke:rgb(255"]     { stroke: #2a3a4a !important; }
+
+.TP-chart svg .crisp,
+.TP-chart svg .hoverlayer line,
+.TP-chart svg .spikeline                    { stroke: #2a3a4a !important; }
+
+/* ─── Overlay modal ─────────────────────────────────────────────
+ *   Full-screen blurred backdrop, centered card. Esc / click-outside
+ *   closes. Inner Plotly chart is one shared-axis plot with each
+ *   selected channel min-max normalized 0–1 so they're comparable. */
+
+.TP-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  animation: TP-overlay-fade 200ms ease;
+}
+
+@keyframes TP-overlay-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.TP-overlay-modal {
+  width: 100%;
+  max-width: 1280px;
+  height: 100%;
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  animation: TP-overlay-pop 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes TP-overlay-pop {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+
+.TP-overlay-head {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.TP-overlay-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.TP-overlay-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.TP-overlay-title-count {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.TP-overlay-sub {
+  margin: 4px 0 0;
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.TP-overlay-close {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.TP-overlay-close:hover {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #ef4444;
+}
+
+.TP-overlay-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* Same Plotly halo / spike fixes as the main chart. */
+.TP-overlay-modal .hovertext path { stroke: #2a3038 !important; }
+
+.TP-overlay-modal svg [stroke="white"],
+.TP-overlay-modal svg [stroke="#fff"],
+.TP-overlay-modal svg [stroke="#FFFFFF"],
+.TP-overlay-modal svg [stroke="#ffffff"],
+.TP-overlay-modal svg [stroke="rgb(255, 255, 255)"],
+.TP-overlay-modal svg [stroke="rgb(255,255,255)"]   { stroke: #2a3a4a !important; }
+
+.TP-overlay-modal svg [style*="stroke: white"],
+.TP-overlay-modal svg [style*="stroke:white"],
+.TP-overlay-modal svg [style*="stroke: #fff"],
+.TP-overlay-modal svg [style*="stroke:#fff"],
+.TP-overlay-modal svg [style*="stroke: rgb(255"],
+.TP-overlay-modal svg [style*="stroke:rgb(255"]     { stroke: #2a3a4a !important; }
+
+.TP-overlay-modal svg .crisp,
+.TP-overlay-modal svg .hoverlayer line,
+.TP-overlay-modal svg .spikeline                    { stroke: #2a3a4a !important; }

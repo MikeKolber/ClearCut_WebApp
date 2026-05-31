@@ -1,0 +1,196 @@
+/* ─── Load Debris Modal — overrides on top of DebrisFilesModal.css ─ */
+
+.LDM-modal {
+  /* Tighter than the DebrisFilesModal — this is just a list picker. */
+  max-width: 560px;
+  max-height: 70vh;
+}
+
+.LDM-body {
+  padding: 0;
+}
+
+.LDM-empty {
+  padding: 36px 28px;
+  color: var(--text-secondary, #a8b3bf);
+  font-size: 12px;
+  text-align: center;
+  letter-spacing: 0.4px;
+}
+.LDM-empty--err {
+  color: #ff8a8a;
+}
+.LDM-empty-hint {
+  margin: 8px 0 0 0;
+  font-size: 11px;
+  color: var(--text-dim, #7a8593);
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-sans);
+}
+
+.LDM-list {
+  list-style: none;
+  margin: 0;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.LDM-row {
+  width: 100%;
+  appearance: none;
+  display: grid;
+  grid-template-columns: minmax(140px, auto) 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--bg-card-2, #11151a);
+  border: 1px solid var(--border, #1c2530);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text, #e8eef7);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.LDM-row:hover {
+  background: rgba(255, 200, 100, 0.06);
+  border-color: rgba(255, 200, 100, 0.45);
+  transform: translateX(2px);
+}
+.LDM-row:active {
+  transform: translateX(2px) scale(0.995);
+}
+
+.LDM-row-name {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.LDM-row-meta {
+  color: var(--text-dim, #7a8593);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.LDM-row-arrow {
+  color: rgba(255, 200, 100, 0.6);
+  font-size: 16px;
+  transition: transform 140ms ease, color 140ms ease;
+}
+.LDM-row:hover .LDM-row-arrow {
+  color: #ffd884;
+  transform: translateX(3px);
+}
+
+.LDM-row--busy {
+  pointer-events: none;
+  opacity: 0.7;
+}
+.LDM-row[disabled] { cursor: default; }
+
+/* ─── Load Simulation Modal — extras ─────────────────────────────── */
+
+.LSM-section-eyebrow {
+  margin: 16px 18px 6px;
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide, 0.08em);
+  text-transform: uppercase;
+  color: var(--text-dim, #7a8593);
+}
+
+.LSM-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 18px 12px;
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide, 0.08em);
+  text-transform: uppercase;
+  color: var(--text-dim, #7a8593);
+}
+.LSM-divider::before,
+.LSM-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border, #1c2530);
+}
+.LSM-divider span { padding: 0 2px; }
+
+.LSM-browse-btn {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 36px);
+  margin: 0 18px 18px;
+  padding: 13px 16px;
+
+  background:
+    linear-gradient(180deg,
+      rgba(77, 168, 218, 0.08) 0%,
+      rgba(77, 168, 218, 0.03) 100%);
+  border: 1px solid rgba(77, 168, 218, 0.30);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background  140ms ease,
+    border-color 140ms ease,
+    transform   140ms ease;
+}
+.LSM-browse-btn:hover {
+  background:
+    linear-gradient(180deg,
+      rgba(77, 168, 218, 0.14) 0%,
+      rgba(77, 168, 218, 0.06) 100%);
+  border-color: rgba(77, 168, 218, 0.55);
+  transform: translateY(-1px);
+}
+.LSM-browse-btn:active { transform: translateY(0); }
+.LSM-browse-btn[disabled] {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.LSM-browse-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(77, 168, 218, 0.14);
+  color: var(--accent, #4DA8DA);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.LSM-browse-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.LSM-browse-label > span:first-child {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.LSM-browse-sub {
+  font-size: 11px;
+  color: var(--text-dim, #7a8593);
+}

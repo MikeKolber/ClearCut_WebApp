@@ -1,0 +1,2067 @@
+/* ─── Main layout (flex so the sidebar can collapse smoothly) ── */
+
+.TR-main {
+  flex: 1;
+  display: flex;
+  gap: 14px;
+  padding: 14px 0 18px;        /* full-bleed — sidebar/content cards
+                                  reach the viewport edges */
+  min-height: 0;
+}
+
+@media (max-width: 960px) {
+  .TR-main { flex-direction: column; }
+}
+
+/* ─── Sidebar shell ─────────────────────────────────────────── */
+
+.TR-sidebar {
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  max-height: calc(100vh - 88px);
+  overflow: hidden;
+  transition: flex-basis 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Collapsed: shrunk to a narrow strip with just the reopen toggle. */
+.TR-sidebar--collapsed {
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 14px;
+}
+
+.TR-sidebar-head {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.TR-sidebar-eyebrow-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.TR-sidebar-eyebrow {
+  letter-spacing: var(--tracking-wide);
+}
+
+/* Open / Close toggle (top-right of sidebar header; same control
+ * lives centered in the strip when the sidebar is collapsed). */
+.TR-sidebar-toggle {
+  appearance: none;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.TR-sidebar-toggle:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.TR-sidebar-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.TR-sidebar-foot {
+  flex-shrink: 0;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Row variant — primary Save expands to fill the row, secondary Clear
+ * hugs its content beside it. Used on BOTH the trajectory and debris
+ * sidebar footers so the two tabs read as a matched pair. */
+.TR-sidebar-foot--row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.TR-sidebar-foot--row .TR-btn-primary { flex: 1; }
+/* When Save is wrapped in a <Tooltip>, the anchor span sits between the
+   flex container and the button — make sure it stretches too so the
+   button still fills the row. */
+.TR-sidebar-foot--row > .TT-anchor { flex: 1; display: flex; }
+
+/* Secondary "Clear" button — paired with the primary Save in the
+ * sidebar footer. Same height + corner radius so the two read as one
+ * connected control; neutral border so it doesn't compete with the
+ * accent-coloured Save. Icon-only is too cryptic, so we pair a small
+ * rotating arrow with the word "Clear" — the icon spins on hover for a
+ * subtle "this will undo everything" cue, but the label sits still so
+ * it stays readable. */
+.TR-btn-clear {
+  appearance: none;
+  height: 36px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.TR-btn-clear:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.TR-btn-clear:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.TR-btn-clear:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.TR-btn-clear-icon {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.75;
+  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 160ms ease;
+}
+
+.TR-btn-clear:hover:not(:disabled) .TR-btn-clear-icon {
+  transform: rotate(-180deg);
+  opacity: 1;
+}
+
+/* ─── Tab strip ─────────────────────────────────────────────── */
+
+.TR-tabstrip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.TR-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.TR-tab:hover { color: var(--text); }
+
+.TR-tab--active {
+  background: var(--accent-soft);
+  color: var(--accent-bright);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.TR-tab--warning.TR-tab--active {
+  background: rgba(245, 158, 11, 0.10);
+  color: var(--warning);
+  box-shadow: inset 0 0 0 1px var(--warning);
+}
+
+/* ─── Preset picker (trigger + popover) ─────────────────────── */
+
+.TR-preset-picker {
+  position: relative;
+  flex-shrink: 0;
+  padding: 10px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.TR-presets-label { letter-spacing: var(--tracking-wide); }
+
+/* Small explanatory caption shown under the eyebrow label, above the
+   trigger. Used on the debris picker to teach the naming convention
+   (e.g. "10d-50s" = 10 debris per point × 50 s interval). */
+.TR-preset-hint {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  margin-top: -2px;
+}
+
+/* First-time onboarding hint pointing at the preset picker. Shown
+   only when the form is fully empty AND the picker is closed —
+   disappears the moment the user opens the picker or types anything.
+   Gentle accent pulse draws the eye without being a hard alert. */
+.TR-preset-firsttime {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 14px;
+  right: 14px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  background: rgba(77, 168, 218, 0.08);
+  border: 1px solid rgba(77, 168, 218, 0.32);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  animation: TR-preset-firsttime-pulse 2.6s ease-in-out infinite;
+}
+
+.TR-preset-firsttime-arrow {
+  font-size: 11px;
+  color: var(--accent-bright);
+  animation: TR-preset-firsttime-arrow 1.8s ease-in-out infinite;
+}
+
+@keyframes TR-preset-firsttime-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(77, 168, 218, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(77, 168, 218, 0.08); }
+}
+
+@keyframes TR-preset-firsttime-arrow {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(2px); }
+}
+
+.TR-preset-trigger {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.TR-preset-trigger:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.TR-preset-trigger--open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.TR-preset-trigger-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.TR-preset-trigger-count {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.TR-preset-trigger-chev {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: var(--text-dim);
+  transition: transform 200ms ease, color 140ms ease;
+}
+
+.TR-preset-trigger--open .TR-preset-trigger-chev {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+/* Popover */
+.TR-preset-popover {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 14px;
+  right: 14px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  animation: TR-popover-in 140ms ease;
+}
+
+@keyframes TR-popover-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.TR-preset-search-wrap {
+  position: relative;
+  padding: 8px 8px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card-2);
+}
+
+.TR-preset-search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.TR-preset-search {
+  width: 100%;
+  height: 28px;
+  padding: 0 10px 0 26px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 11px;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+
+.TR-preset-search:focus { border-color: var(--accent); }
+
+.TR-preset-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  scrollbar-gutter: stable;
+}
+
+.TR-preset-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.TR-preset-item:hover,
+.TR-preset-item--highlight {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.TR-preset-item--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.TR-preset-item-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.TR-preset-item-meta {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+}
+
+.TR-preset-item--active .TR-preset-item-meta {
+  color: var(--accent);
+}
+
+/* ── Debris variant — amber instead of blue ─────────────────────────
+   Picker structure is identical to the trajectory variant, but every
+   accent-coloured element switches to `--warning` so the picker reads
+   as belonging to the debris workflow (matches the amber sidebar tab,
+   Run Debris button, and Trajectory-Required banner). */
+.TR-preset-picker--debris .TR-preset-trigger--open {
+  border-color: var(--warning);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.16);
+}
+
+.TR-preset-picker--debris .TR-preset-trigger--open .TR-preset-trigger-chev {
+  color: var(--warning);
+}
+
+.TR-preset-picker--debris .TR-preset-item--active {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.TR-preset-picker--debris .TR-preset-item--active .TR-preset-item-meta {
+  color: var(--warning);
+}
+
+.TR-preset-empty {
+  padding: 18px 10px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: var(--tracking-mid);
+}
+
+/* Small section divider inside the popover — labels the "Recent"
+   group and the "All presets" group below it. Only renders when
+   there's something to group; in the no-recents case the popover
+   looks identical to before. */
+.TR-preset-section-label {
+  padding: 8px 12px 4px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.TR-preset-section-label:first-child {
+  padding-top: 6px;
+}
+
+/* ─── Divider + scroll body ─────────────────────────────────── */
+
+.TR-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 14px;
+  flex-shrink: 0;
+}
+
+.TR-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-gutter: stable;
+}
+
+/* ─── Collapsible section ───────────────────────────────────── */
+
+.TR-section {
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.TR-section--open {
+  border-color: var(--border);
+  background: var(--bg-card-2);
+}
+
+.TR-section-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font-family: var(--font-sans);
+  border-radius: var(--radius-md);
+  transition: background 140ms ease;
+}
+
+.TR-section-head:hover { background: var(--bg-hover); }
+
+.TR-section-marker {
+  flex-shrink: 0;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.TR-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.TR-section-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.TR-section-chevron {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  transform: rotate(-90deg);
+  transition: transform 200ms ease;
+}
+
+.TR-section--open .TR-section-chevron { transform: rotate(0deg); }
+
+.TR-section-body {
+  padding: 4px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ─── Field input ───────────────────────────────────────────── */
+
+.TR-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+}
+
+.TR-field-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.TR-field-input-wrap {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  width: 130px;
+}
+
+.TR-field-input {
+  width: 100%;
+  height: 26px;
+  padding: 0 38px 0 8px;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.TR-field-input:hover  { border-color: var(--border-strong); }
+.TR-field-input:focus  {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.TR-field-unit {
+  position: absolute;
+  right: 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.TR-field--error .TR-field-input {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+/* ─── Stages block ──────────────────────────────────────────── */
+
+.TR-stages-block {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.TR-stages-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.TR-stages-count {
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: var(--tracking-wide);
+}
+
+.TR-stages-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  padding: 0 2px;
+}
+
+.TR-stage-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.TR-stage-chip:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.TR-stage-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.TR-stage-chip--active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.TR-stage-chip--disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+/* ─── Debris-tab specifics ─────────────────────────────────── */
+
+.TR-debris-hint {
+  flex-shrink: 0;
+  padding: 10px 14px 6px;
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+/* "Trajectory required" banner shown at the top of the debris tab when
+   no trajectory has run / loaded in this session. Uses the same amber
+   `--warning` palette as the debris tab itself so it visually belongs
+   here, but reads as informational (not error / not running). Hides as
+   soon as a trajectory finishes — at that point the debris Run button
+   becomes available and the banner has nothing more to say. */
+.TR-debris-banner {
+  flex-shrink: 0;
+  margin: 12px 14px 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(245, 158, 11, 0.07);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.TR-debris-banner-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 50%;
+  margin-top: 1px;
+}
+
+.TR-debris-banner-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.TR-debris-banner-title {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--warning);
+}
+
+.TR-debris-banner-text {
+  color: var(--text-secondary);
+}
+
+.TR-mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.TR-mode-btn {
+  appearance: none;
+  height: 28px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.TR-mode-btn:hover { color: var(--text); border-color: var(--border-strong); }
+
+.TR-mode-btn--active {
+  background: rgba(245, 158, 11, 0.10);
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.TR-custom-points {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.TR-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.TR-custom-idx {
+  flex-shrink: 0;
+  width: 22px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.TR-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 11px;
+  outline: none;
+}
+
+.TR-input:focus { border-color: var(--accent); }
+
+.TR-icon-btn {
+  flex-shrink: 0;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.TR-icon-btn:hover { border-color: var(--border-strong); }
+
+.TR-icon-btn--danger { color: #ef4444; }
+.TR-icon-btn--danger:hover { border-color: #ef4444; }
+
+/* ─── Sidebar buttons ───────────────────────────────────────── */
+
+/* Primary button: dark transparent background + accent-blue border / text.
+ * Hover gets a faint blue wash and a soft glow. The amber `--debris`
+ * variant below mirrors the same idiom in the debris colorway. */
+.TR-btn-primary {
+  width: 100%;
+  appearance: none;
+  height: 36px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid rgba(77, 168, 218, 0.55);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.TR-btn-primary:hover {
+  background: rgba(77, 168, 218, 0.10);
+  border-color: rgba(77, 168, 218, 0.85);
+  color: var(--accent);
+  box-shadow: 0 0 14px rgba(77, 168, 218, 0.22);
+}
+
+/* Amber match for the debris tab's save button — same `--warning`
+ * orange as the active debris sidebar tab and the Run Debris button. */
+.TR-btn-primary--debris {
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.55);
+}
+.TR-btn-primary--debris:hover {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.85);
+  color: var(--warning);
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.22);
+}
+
+.TR-btn-secondary {
+  appearance: none;
+  height: 30px;
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.TR-btn-secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.TR-btn-secondary--full { width: 100%; height: 34px; font-size: 12px; }
+
+/* ─── Content (right pane) ──────────────────────────────────── */
+
+.TR-content {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  padding: 18px 26px 14px;     /* tightened from 26/24 to keep the
+                                  debris stack inside the viewport */
+  transition: padding 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.TR-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* ─── Animated orbit icon ───────────────────────────────────── */
+
+.TR-orbit-wrap {
+  position: relative;
+  margin-bottom: 18px;
+  padding: 6px;
+  border-radius: 50%;
+}
+
+.TR-orbit-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    rgba(77, 168, 218, 0.10) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.TR-orbit {
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Hero typography ───────────────────────────────────────── */
+
+.TR-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  color: var(--text);
+  text-shadow: var(--shadow-text-md);
+}
+
+.TR-subtitle {
+  margin: 6px 0 18px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+/* ─── Mission summary card ──────────────────────────────────── */
+
+.TR-mission {
+  width: 100%;
+  background: var(--bg-card-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  text-align: left;
+}
+
+.TR-mission-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.TR-mission-preset {
+  font-size: 11px;
+  color: var(--accent-bright);
+  letter-spacing: 0.04em;
+}
+
+.TR-mission-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 18px;
+}
+
+@media (max-width: 720px) {
+  .TR-mission-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.TR-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 4px;
+  /* Backdrop the .TR-stat--flash effect — sits invisibly until a
+     value changes, then we fade an accent-blue inset glow in and
+     out via the keyframe below. */
+  position: relative;
+}
+
+/* Tiny "value just changed" pulse — fires for ~600 ms whenever the
+   rendered stat value differs from its last render. Conveys "yes,
+   that edit landed" feedback without distracting from the rest of
+   the card. */
+.TR-stat--flash {
+  animation: TR-stat-flash 620ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes TR-stat-flash {
+  0%   { box-shadow: inset 0 0 0 1px transparent;                  background: transparent; }
+  20%  { box-shadow: inset 0 0 0 1px var(--accent);                background: var(--accent-soft); }
+  100% { box-shadow: inset 0 0 0 1px transparent;                  background: transparent; }
+}
+
+.TR-stat-label {
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.TR-stat-value {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ─── Progress track (full-width bar under mission card) ────── */
+
+.TR-progress-track {
+  width: 100%;
+  margin: 18px 0 0;          /* bottom margin moved onto .TR-run-wrap */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: TR-progress-track-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes TR-progress-track-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.TR-progress-track-bar {
+  position: relative;
+  flex: 1;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* (Rocket marker removed — the fill's gradient + scanning shimmer
+   communicate progress more cleanly without a separate object trying
+   to ride the leading edge.) */
+
+/* Faint segmented grid behind the fill — instrument-readout vibe */
+.TR-progress-track-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 24px,
+      rgba(255, 255, 255, 0.04) 24px,
+      rgba(255, 255, 255, 0.04) 25px
+    );
+  pointer-events: none;
+}
+
+.TR-progress-track-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 0%;                /* width is set inline by React each rAF tick */
+  background: linear-gradient(
+    90deg,
+    rgba(77, 168, 218, 0.30) 0%,
+    rgba(77, 168, 218, 0.60) 50%,
+    var(--accent) 100%
+  );
+  border-right: 1px solid var(--accent-bright);
+  box-shadow:
+    0 0 16px var(--accent-glow),
+    inset 0 0 10px rgba(111, 189, 230, 0.25);
+  overflow: hidden;
+  will-change: width;
+}
+
+/* Scanning shimmer that travels across the fill (running state only) */
+.TR-progress-track-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.16) 50%,
+    transparent 100%
+  );
+  animation: TR-bar-shimmer 1.6s linear infinite;
+}
+
+.TR-progress-track--success .TR-progress-track-fill {
+  border-right: none;
+  /* Same accent gradient — bar simply reaches 100 %, no color flip. */
+}
+.TR-progress-track--success .TR-progress-track-fill::after {
+  animation: none;
+}
+
+/* Debris variant — same gradient idiom, amber colorway matching the
+ * `var(--warning)` debris tab + Run Debris button. */
+.TR-progress-track--debris .TR-progress-track-fill {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.30) 0%,
+    rgba(245, 158, 11, 0.60) 50%,
+    var(--warning) 100%
+  );
+  border-right-color: #fbbf24;
+  box-shadow:
+    0 0 16px rgba(245, 158, 11, 0.45),
+    inset 0 0 10px rgba(251, 191, 36, 0.25);
+}
+
+/* Text content overlaid on the bar */
+.TR-progress-track-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.TR-progress-track-content--center {
+  justify-content: center;
+  gap: 10px;
+}
+
+/* Success-state percentage + caption (both green, mono, with strong
+ * shadow so they read clearly over the accent fill). */
+.TR-progress-track-pct--success {
+  color: var(--success);
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.85),
+    0 0 8px rgba(74, 222, 128, 0.30);
+}
+
+.TR-progress-track-sep {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgba(74, 222, 128, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.TR-progress-track-success-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--success);
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.85),
+    0 0 8px rgba(74, 222, 128, 0.30);
+}
+
+.TR-progress-track-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.TR-progress-track-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.TR-progress-track-pct {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  font-feature-settings: 'tnum' 1;
+}
+
+.TR-progress-track-elapsed {
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.7;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  font-feature-settings: 'tnum' 1;
+}
+
+.TR-progress-track-cancel,
+.TR-progress-track-reload {
+  appearance: none;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+/* Cancel button — red by default so the affordance reads as
+   "destructive / abort" at a glance, not just on hover. */
+.TR-progress-track-cancel {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.08);
+}
+.TR-progress-track-cancel:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.75);
+  color: #ff6b6b;
+}
+
+/* Reset / close button — blue at rest (matches the success state's
+   accent vocabulary), shifts to red on hover so the destructive
+   nature of the action ("dismiss this view") is signalled before
+   the click rather than after. */
+.TR-progress-track-reload {
+  color: var(--accent);
+  border-color: rgba(77, 168, 218, 0.40);
+  background: rgba(77, 168, 218, 0.06);
+  animation: TR-progress-track-reload-in 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.TR-progress-track-reload:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.70);
+  color: #ff6b6b;
+}
+
+@keyframes TR-progress-track-reload-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1);   }
+}
+
+/* Reset glyph (×) — was a rotating reload icon when this button
+   meant "re-run". Now it's a dismiss / reset glyph, so the hover
+   affordance is a subtle scale-up rather than a spin (rotation is
+   invisible on a symmetric × and would read as nothing happening). */
+.TR-progress-track-reload-icon {
+  display: inline-block;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 500;
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.TR-progress-track-reload:hover .TR-progress-track-reload-icon {
+  transform: scale(1.18);
+}
+
+/* ─── Run button + status caption ───────────────────────────── */
+
+.TR-run-wrap {
+  margin-top: 24px;          /* lowers the run button below the mission/progress */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* (Run-error popup styles moved to src/components/ErrorToast/ErrorToast.css.) */
+
+/* ═══ Mission-lock pulse ═══════════════════════════════════════════
+   Two thin accent-blue rings that expand outward from the centre of
+   the page once when a trajectory simulation reaches the success
+   state. Reads as a sonar / radar lock — a quiet "data acquired"
+   moment, not a celebration. Repeats every successful run; subtle
+   enough not to fatigue. The two rings are staggered so the effect
+   reads as a single sweep, not two separate pings. */
+
+.TR-lockpulse {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 900;            /* below the toast (z 1000), above results */
+  display: grid;
+  place-items: center;
+  align-content: center;
+  overflow: hidden;
+}
+
+.TR-lockpulse-ring {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  opacity: 0;
+  /* Subtle inner glow so the ring catches the eye without screaming. */
+  box-shadow:
+    0 0 24px rgba(77, 168, 218, 0.35),
+    inset 0 0 12px rgba(77, 168, 218, 0.25);
+  will-change: transform, opacity;
+  animation: TR-lockpulse-expand 1300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.TR-lockpulse-ring--late {
+  animation-delay: 220ms;
+  border-color: var(--accent-bright);
+  opacity: 0;
+}
+
+@keyframes TR-lockpulse-expand {
+  0%   {
+    opacity: 0;
+    transform: scale(0.25);
+    border-width: 2px;
+  }
+  20%  {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(7);
+    border-width: 0.5px;
+  }
+}
+
+.TR-run-btn {
+  position: relative;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 30px;
+  min-width: 230px;
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  /* Dark, transparent — accent-blue border + text. Hover gets a faint
+   * wash and a glow. Mirrors the debris variant's idiom in blue. */
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid rgba(77, 168, 218, 0.55);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transform-origin: center bottom;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.TR-run-btn:active:not(:disabled):not(.TR-run-btn--igniting) {
+  transform: scale(0.97);
+}
+.TR-run-btn:disabled {
+  cursor: default;
+}
+
+.TR-run-btn:hover {
+  background: rgba(77, 168, 218, 0.10);
+  border-color: rgba(77, 168, 218, 0.85);
+  color: var(--accent);
+  box-shadow: 0 0 18px rgba(77, 168, 218, 0.22);
+}
+
+/* Debris-flavored variant — same dark/transparent idiom, amber accent
+ * matching the active debris sidebar tab (`var(--warning)` = #f59e0b).
+ * That visual handshake means "this button belongs to the debris flow"
+ * is unambiguous at a glance. */
+.TR-run-btn--debris {
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.55);
+}
+.TR-run-btn--debris:hover {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.85);
+  color: var(--warning);
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.22);
+}
+
+.TR-run-btn-icon {
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.TR-run-btn-hint {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 3px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+/* ═══ Ignition sequence ════════════════════════════════════════════
+   Triggered the moment the user clicks Run Simulation. Plays for
+   ~700 ms before the real progress bar mounts, so the action feels
+   like a *launch* — a small recoil, a glow burst, particles eject
+   downward, the play icon nudges forward. */
+
+.TR-run-btn--igniting {
+  animation: TR-run-btn-recoil 700ms cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(77, 168, 218, 0.18);
+  border-color: var(--accent-bright);
+  color: var(--accent-bright);
+  box-shadow:
+    0 0 24px 4px var(--accent-glow),
+    inset 0 0 18px rgba(111, 189, 230, 0.25);
+}
+
+.TR-run-btn--igniting.TR-run-btn--debris {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(252, 211, 77, 0.95);
+  color: rgba(255, 213, 122, 1);
+  box-shadow:
+    0 0 24px 4px rgba(245, 158, 11, 0.45),
+    inset 0 0 18px rgba(252, 211, 77, 0.25);
+}
+
+@keyframes TR-run-btn-recoil {
+  0%   { transform: translateY(0)    scale(1);    }
+  20%  { transform: translateY(2px)  scale(0.98); }
+  55%  { transform: translateY(-3px) scale(1.04); }
+  100% { transform: translateY(0)    scale(1);    }
+}
+
+.TR-run-btn--igniting .TR-run-btn-icon {
+  animation: TR-run-btn-icon-thrust 700ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes TR-run-btn-icon-thrust {
+  0%   { transform: translateX(0)    scale(1);    }
+  40%  { transform: translateX(2px)  scale(1.25); }
+  100% { transform: translateX(0)    scale(1);    }
+}
+
+/* Particle ejector — five small dots stacked at the bottom-center of
+   the button. They're invisible until the `--igniting` class kicks
+   in, then each one shoots downward + outward on a slight stagger.
+   Each `.TR-run-btn-particle` uses `nth-child` to pick its launch
+   angle so the burst looks like an exhaust cone, not a column. */
+.TR-run-btn-particles {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.TR-run-btn-particle {
+  position: absolute;
+  left: -2px;
+  top: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-bright);
+  box-shadow: 0 0 6px var(--accent-glow);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.TR-run-btn--debris .TR-run-btn-particle {
+  background: #ffd57a;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.TR-run-btn--igniting .TR-run-btn-particle:nth-child(1) {
+  animation: TR-particle 700ms cubic-bezier(0.16, 0.85, 0.3, 1) 60ms;
+  --tx: -14px; --ty: 24px;
+}
+.TR-run-btn--igniting .TR-run-btn-particle:nth-child(2) {
+  animation: TR-particle 720ms cubic-bezier(0.16, 0.85, 0.3, 1) 90ms;
+  --tx: -6px; --ty: 30px;
+}
+.TR-run-btn--igniting .TR-run-btn-particle:nth-child(3) {
+  animation: TR-particle 700ms cubic-bezier(0.16, 0.85, 0.3, 1) 70ms;
+  --tx: 0; --ty: 32px;
+}
+.TR-run-btn--igniting .TR-run-btn-particle:nth-child(4) {
+  animation: TR-particle 720ms cubic-bezier(0.16, 0.85, 0.3, 1) 90ms;
+  --tx: 6px; --ty: 30px;
+}
+.TR-run-btn--igniting .TR-run-btn-particle:nth-child(5) {
+  animation: TR-particle 700ms cubic-bezier(0.16, 0.85, 0.3, 1) 60ms;
+  --tx: 14px; --ty: 24px;
+}
+
+@keyframes TR-particle {
+  0%   { opacity: 0;   transform: translate(0, 0) scale(0.4); }
+  10%  { opacity: 1; }
+  100% { opacity: 0;   transform: translate(var(--tx), var(--ty)) scale(0.9); }
+}
+
+
+
+@keyframes TR-bar-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(220%);  }
+}
+
+/* ─── Mid-page results block (sketch cards + small footer) ──── */
+
+.TR-results-mid {
+  width: 100%;
+  max-width: 720px;
+  /* margin: auto centers vertically (between hero bottom and content
+   * bottom) AND horizontally — we land midway between the bar and
+   * the bottom of the page. */
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;          /* tightened from 14 — debris cards stack here */
+  padding: 4px 0;     /* tightened from 16 0 */
+  animation: TR-results-in 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Restored from sessionStorage (e.g. user came back from /trajectory/plot).
+ * Skip the entrance animations — they already played the first time. */
+.TR-results-mid--no-anim,
+.TR-results-mid--no-anim * {
+  animation: none !important;
+}
+
+.TR-results-title {
+  margin: 0 0 2px;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-shadow: var(--shadow-text-md);
+  text-align: center;
+  animation: TR-results-title-in 380ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: 60ms;
+}
+
+/* Sub-heading rendered above the debris cards when stacked under the
+ * trajectory results. Smaller + amber to handshake with the rest of
+ * the debris colorway (Run Debris button, debris progress bar, etc.). */
+.TR-results-subtitle {
+  margin: 4px 0 0;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--warning);
+  text-align: center;
+  animation: TR-results-title-in 380ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: 90ms;
+}
+
+.TR-results-subtitle--solo {
+  /* When debris ran without an in-session trajectory (rare), the
+   * subtitle stands alone and should sit at the same vertical position
+   * the main title would have used. */
+  margin-top: 0;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--warning);
+}
+
+@keyframes TR-results-title-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes TR-results-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.TR-cards-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+/* Debris-results variant — auto-fit so it lays out cleanly whether
+ * there's 1 card (current: just Results Folder) or 2+ later. Cards
+ * cap at 240 px so a single card doesn't stretch the full width. */
+.TR-cards-row--two {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 240px));
+  justify-content: center;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+@media (max-width: 720px) {
+  .TR-cards-row,
+  .TR-cards-row--two { grid-template-columns: repeat(2, 1fr); }
+}
+
+.TR-result-card {
+  appearance: none;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 11px;          /* tightened from 12 */
+  text-align: left;
+  background: var(--bg-card-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  color: inherit;
+  overflow: hidden;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  animation: TR-result-card-in 460ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.TR-result-card:nth-child(1) { animation-delay: 100ms; }
+.TR-result-card:nth-child(2) { animation-delay: 160ms; }
+.TR-result-card:nth-child(3) { animation-delay: 220ms; }
+.TR-result-card:nth-child(4) { animation-delay: 280ms; }
+
+@keyframes TR-result-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    border-color: transparent;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    border-color: var(--border);
+  }
+}
+
+.TR-result-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  transform: scaleY(0);
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.TR-result-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.TR-result-card:hover::after { transform: scaleY(1); }
+
+.TR-result-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.TR-result-card-glyph {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 400;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  transition: color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.TR-result-card:hover .TR-result-card-glyph {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.TR-result-card-arrow {
+  font-size: 13px;
+  color: var(--text-dim);
+  transition: color 180ms ease, transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.TR-result-card:hover .TR-result-card-arrow {
+  color: var(--accent);
+  transform: translateX(3px);
+}
+
+/* Debris result card — same default styling as the other cards, but
+   hover lights up in the debris amber (`--warning`) instead of the
+   accent blue. Visually signals "this card belongs to the debris
+   workflow" without colouring the resting state at all. */
+.TR-result-card--debris::after {
+  background: var(--warning);
+}
+
+.TR-result-card--debris:hover .TR-result-card-glyph {
+  color: var(--warning);
+  border-color: var(--warning);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+}
+
+.TR-result-card--debris:hover .TR-result-card-arrow {
+  color: var(--warning);
+}
+
+.TR-result-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.TR-result-card-subtitle {
+  font-size: 10px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+}
+
+/* ═══ Result-card preview animations ═══════════════════════════════
+   Each card hosts a small preview SVG (PlotPreview, KmlPreview,
+   ExcelPreview, DebrisPreview). When the parent card is hovered we
+   animate one signature element per type — the line traces itself
+   in, the table rows blink-stream, the debris dots twinkle. The
+   defaults are static (no idle motion) so the row reads calmly
+   until the user reaches for it. */
+
+/* PlotPreview — the curve "writes itself in" left-to-right by
+   tweening stroke-dashoffset. ~200 covers the path length with room
+   to spare for varying viewport widths. */
+.TR-card-preview-stroke {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 700ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+.TR-result-card:hover .TR-card-preview-stroke {
+  animation: TR-prev-plot-draw 900ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+@keyframes TR-prev-plot-draw {
+  0%   { stroke-dashoffset: 200; }
+  100% { stroke-dashoffset: 0;   }
+}
+
+/* KmlPreview — the trajectory arc draws on the same way. */
+.TR-card-preview-kml-arc {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 0;
+}
+.TR-result-card:hover .TR-card-preview-kml-arc {
+  animation: TR-prev-plot-draw 950ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ExcelPreview — rows "stream in" one cell at a time. Each cell's
+   inline `animation-delay` is set in JS so the cascade reads
+   top-to-bottom, left-to-right like a real data fill. */
+.TR-card-preview-excel-cell {
+  opacity: 1;
+}
+.TR-result-card:hover .TR-card-preview-excel-cell {
+  animation: TR-prev-excel-fill 600ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes TR-prev-excel-fill {
+  0%   { opacity: 0;   transform: translateY(-2px); }
+  100% { opacity: 1;   transform: translateY(0);    }
+}
+
+/* DebrisPreview — dots twinkle with per-dot stagger. */
+.TR-card-preview-debris-dot {
+  /* no idle animation */
+}
+.TR-result-card:hover .TR-card-preview-debris-dot {
+  animation: TR-prev-debris-twinkle 900ms ease-in-out both;
+}
+@keyframes TR-prev-debris-twinkle {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.5); filter: brightness(1.7); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+.TR-card-preview {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin: 0;
+  border-radius: var(--radius-sm);
+  background: rgba(77, 168, 218, 0.03);
+}
+
+.TR-results-foot {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  animation: TR-results-foot-in 360ms 380ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* ─── View 3D Structure button ─────────────────────────────────
+   Compact icon-and-label sub-action. Smaller than the result cards
+   above and tinted in the payload-gold color so it visually pairs
+   with the "rocket" concept. */
+.TR-rocket-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px 7px 12px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  color: #c9a55a;
+  background: linear-gradient(180deg, rgba(201, 165, 90, 0.07) 0%, rgba(201, 165, 90, 0.02) 100%);
+  border: 1px solid rgba(201, 165, 90, 0.32);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+.TR-rocket-btn:hover {
+  color: #e6c47b;
+  background: linear-gradient(180deg, rgba(201, 165, 90, 0.16) 0%, rgba(201, 165, 90, 0.06) 100%);
+  border-color: rgba(201, 165, 90, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px -8px rgba(201, 165, 90, 0.5);
+}
+.TR-rocket-btn:active {
+  transform: translateY(0);
+}
+
+.TR-rocket-btn-label {
+  white-space: nowrap;
+}
+
+/* The inline SVG inherits color via `currentColor`. A subtle
+   downward tilt nudges the rocket toward "ascent-ready" without
+   feeling diagonal. The rocket's fins extend slightly past the
+   button's left edge, but that's intentional — gives the icon a
+   bit of physical presence. */
+.TR-rocket-glyph {
+  flex-shrink: 0;
+  transform: rotate(-12deg) translateY(0.5px);
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.TR-rocket-btn:hover .TR-rocket-glyph {
+  transform: rotate(-22deg) translateY(-1px);
+}
+
+/* ─── Save Simulation button ───────────────────────────────────
+   Twin to .TR-rocket-btn but tinted in the accent blue rather
+   than payload-gold, so the two footer buttons read as a balanced
+   pair (one for inspecting the rocket, one for archiving the run).
+   Identical metrics — same height, padding, radius, font — so they
+   sit on the same horizontal baseline regardless of which one is
+   wider. */
+.TR-save-sim-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px 7px 12px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  color: var(--accent, #4DA8DA);
+  background:
+    linear-gradient(180deg,
+      rgba(77, 168, 218, 0.08) 0%,
+      rgba(77, 168, 218, 0.02) 100%);
+  border: 1px solid rgba(77, 168, 218, 0.32);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+.TR-save-sim-btn:hover {
+  color: #82c8e8;
+  background:
+    linear-gradient(180deg,
+      rgba(77, 168, 218, 0.16) 0%,
+      rgba(77, 168, 218, 0.06) 100%);
+  border-color: rgba(77, 168, 218, 0.62);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px -8px rgba(77, 168, 218, 0.55);
+}
+.TR-save-sim-btn:active {
+  transform: translateY(0);
+}
+
+.TR-save-sim-btn-label {
+  white-space: nowrap;
+}
+
+/* Save glyph mirrors rocket glyph's animation feel: a tiny downward
+   nudge on hover that reads as "depositing into storage". */
+.TR-save-glyph {
+  flex-shrink: 0;
+  transform: translateY(0px);
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.TR-save-sim-btn:hover .TR-save-glyph {
+  transform: translateY(2px);
+}
+
+@keyframes TR-results-foot-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* ─── Mission-row action buttons ─────────────────────────────
+ *   Sit between the mission card and the progress / run area.
+ *   Three labeled buttons centered in a row; subtle border, accent
+ *   blue hover with a soft glow. */
+
+.TR-mission-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  width: 100%;
+}
+
+.TR-mission-action {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.TR-mission-action:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.TR-mission-action-glyph {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-dim);
+  transition: color 140ms ease;
+}
+
+.TR-mission-action:hover .TR-mission-action-glyph {
+  color: var(--accent);
+}

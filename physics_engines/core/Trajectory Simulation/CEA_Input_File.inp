@@ -1,0 +1,11 @@
+problem
+rocket frozen nfz=2
+p,bar= 50
+sup,ae/at= 60
+react
+fuel=Jet-A(L) wt=100.000000 t,k=298.000000
+oxid=HTP90 wt=200.000000 t,k=298.000000
+h,kj/mol=-60316.3 H 642 O 586
+output short
+output plot p ispfz son machfz cffz
+end

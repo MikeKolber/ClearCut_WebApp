@@ -1,0 +1,399 @@
+/* ─── Top-bar buttons (Save / Load) ─────────────────────────────── */
+
+.PBS-topBtn {
+  height: 28px;
+  padding: 0 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.PBS-topBtn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+}
+
+.PBS-topBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ─── Stage bar ─────────────────────────────────────────────────── */
+
+.StageBar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 44px;
+  margin: 10px 24px 0;
+  padding: 0 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.StageBar-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.StageBar-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.StageBar-counts,
+.StageBar-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.StageBar-count {
+  width: 28px;
+  height: 24px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.StageBar-count:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+.StageBar-count--active {
+  color: var(--bg);
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.StageBar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+
+.StageBar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 12px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.StageBar-pill:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+.StageBar-pill--active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.StageBar-pill-num {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.StageBar-pill-text {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-mid);
+}
+
+.StageBar-spacer { flex: 1; }
+
+.StageBar-meta {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+@media (max-width: 880px) {
+  .StageBar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 14px;
+    gap: 10px;
+  }
+  .StageBar-meta { display: none; }
+}
+
+/* ─── Main grid ────────────────────────────────────────────────── */
+
+.PBS-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px 24px 18px;
+  min-height: 0;
+}
+
+@media (max-width: 1180px) {
+  .PBS-main {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+  .PBS-results {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────── */
+
+.PBS-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 6px;
+  min-height: 460px;
+}
+
+.PBS-sidebar-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+}
+
+.PBS-tabBtn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 30px;
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.PBS-tabBtn::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%) scaleX(0.6);
+  transform-origin: left center;
+  width: 2px;
+  height: 0;
+  background: var(--accent);
+  border-radius: 1px;
+  opacity: 0;
+  box-shadow: 0 0 8px var(--accent-glow);
+  transition:
+    height 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 200ms ease,
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.PBS-tabBtn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.PBS-tabBtn--active {
+  color: var(--text);
+  background: var(--bg-hover);
+  font-weight: 600;
+}
+
+.PBS-tabBtn--active::before {
+  height: 18px;
+  opacity: 1;
+  transform: translateY(-50%) scaleX(1);
+}
+
+.PBS-calcBtn {
+  margin-top: 10px;
+  height: 38px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--text);
+  border: 1px solid var(--text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.PBS-calcBtn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  box-shadow: 0 0 22px var(--accent-glow);
+}
+
+.PBS-calcBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Tab content ─────────────────────────────────────────────── */
+
+.PBS-content {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 0;
+}
+
+.PBS-content-head {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.PBS-content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 14px 18px;
+  max-height: calc(100vh - 232px);
+}
+
+.Interstages-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 50px 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ─── Results panel ─────────────────────────────────────────── */
+
+.PBS-results {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 0;
+}
+
+.PBS-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.PBS-results-head-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.PBS-results-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.PBS-results-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--success);
+}
+
+.PBS-results-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+  animation: pulseDot 2s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+.PBS-results-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  max-height: calc(100vh - 232px);
+}
+
+/* Errors now surface via the shared ErrorToast (top-screen pop). */
+
+/* ─── Busy overlay ──────────────────────────────────────────── */
+
+.PBS-busy {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(4px);
+  animation: pbsBusyIn 120ms ease;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+@keyframes pbsBusyIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

@@ -1,0 +1,255 @@
+.Landing {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  isolation: isolate;
+}
+
+/* ─── Drifting starfield (behind everything) ────────────────────── */
+
+.Landing-starfield {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  /* Soft mask so stars are densest in the corners and faint near the
+   * center — keeps the hero readable without dimming the atmosphere. */
+  mask-image: radial-gradient(ellipse at center, transparent 30%, black 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 30%, black 80%);
+}
+
+@keyframes Landing-twinkle {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 1; }
+}
+
+.Landing > *:not(.Landing-starfield) {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes Landing-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Thin top bar — version on the right, structural border below ─ */
+
+.Landing-topbar {
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 0 28px;
+  background: rgba(0, 0, 0, 0.85);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  animation: Landing-fade 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.Landing-topbar-version {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+@media (max-width: 720px) {
+  .Landing-topbar { padding: 0 16px; gap: 10px; }
+}
+
+/* ─── Centered content container ────────────────────────────────── */
+
+.Landing-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 60px;
+}
+
+@media (max-width: 720px) {
+  .Landing-inner  { padding: 0 18px; }
+}
+
+/* ─── Center hero ───────────────────────────────────────────────── */
+
+.Landing-center {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 40px 56px;        /* extra top → push the block lower */
+}
+
+/* ─── Hero typography ───────────────────────────────────────────── */
+
+/* Big logo where the heading used to live, plus an overlaid divider
+ * line between the "ClearCut" and "Space" portions of the wordmark. */
+
+.Landing-hero-logo-wrap {
+  position: relative;
+  display: inline-block;
+  margin: 0 auto 72px;             /* big breathing room before the rest */
+  animation: Landing-fade-up 540ms cubic-bezier(0.16, 1, 0.3, 1) 160ms backwards;
+}
+
+.Landing-hero-logo {
+  display: block;
+  height: 110px;
+  width: auto;
+  max-width: 100%;
+  user-select: none;
+  -webkit-user-drag: none;
+  /* Soft white glow + drop shadow — same idea as the heading text-shadow,
+   * just translated into image filter primitives. */
+  filter:
+    drop-shadow(0 0 30px rgba(255, 255, 255, 0.18))
+    drop-shadow(0 0 12px rgba(255, 255, 255, 0.10))
+    drop-shadow(0 6px 24px rgba(0, 0, 0, 0.55));
+}
+
+/* White divider line — sits over the logo between the two words.
+ * Adjust left / right / top / height to taste. */
+.Landing-hero-logo-line {
+  position: absolute;
+  left: 0%;
+  right: 40%;            /* line spans 0% → 60%, anchored to left edge */
+  top: 85%;              /* well below vertical center */
+  transform: translateY(-50%);
+  height: 4px;
+  /* Right-to-left fade — bright on the right, fades out to the left */
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0)    0%,
+    rgba(255, 255, 255, 0.20) 20%,
+    rgba(255, 255, 255, 0.65) 55%,
+    rgba(255, 255, 255, 0.95) 100%
+  );
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+
+@media (max-width: 760px) {
+  .Landing-hero-logo { height: 72px; }
+}
+
+.Landing-subheading {
+  margin: 0 0 28px;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  animation: Landing-fade-up 480ms cubic-bezier(0.16, 1, 0.3, 1) 220ms backwards;
+}
+
+@keyframes Landing-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* ─── Status strip (sits in top-right of the topbar) ────────────── */
+
+.Landing-status-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+  /* No pill bg / border in the topbar context — the topbar's own
+   * blurred background carries the chrome. */
+}
+
+.Landing-status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-feature-settings: 'tnum' 1;
+}
+
+.Landing-status-sep {
+  color: var(--text-faint);
+  font-weight: 700;
+}
+
+/* Live status dots — green/red/grey with optional pulse */
+.Landing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.Landing-dot--online {
+  background: var(--success);
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.55);
+  animation: Landing-pulse 2.4s ease-in-out infinite;
+}
+
+.Landing-dot--offline {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.55);
+}
+
+.Landing-dot--checking {
+  background: var(--text-dim);
+  animation: Landing-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes Landing-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1;    }
+}
+
+/* ─── Module nav (3 cards) ──────────────────────────────────────── */
+
+.Landing-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  max-width: 920px;
+  margin-top: 24px;
+}
+
+@media (max-width: 760px) {
+  .Landing-nav {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .Landing-center       { padding: 32px 16px; }
+  .Landing-status-strip { gap: 8px; font-size: 9px; }
+}
+
+@media (max-width: 540px) {
+  /* On phones the status text is the first to drop — version stays. */
+  .Landing-status-strip { display: none; }
+}
+
+/* ─── Thin bottom bar — empty bookend matching the topbar ───────── */
+
+.Landing-footer {
+  height: 36px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.85);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  animation: Landing-fade 480ms cubic-bezier(0.16, 1, 0.3, 1) 600ms backwards;
+}

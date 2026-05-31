@@ -1,0 +1,620 @@
+{
+    "inputs": {
+        "engine": {
+            "selected_model_key": "our_model_thrust",
+            "number_of_engines_text": "1",
+            "rocket_outer_diameter_text": "1.25",
+            "thrust_kn_text": "",
+            "mass_flow_rate_text": "1.98",
+            "nozzle_epsilon_c_text": "",
+            "nozzle_alpha_angle_text": "",
+            "nozzle_efficiency_text": "98.9",
+            "cea_calculation_enabled": true,
+            "cea_P_c_desired_text": "50",
+            "cea_Ae_At_text": "60",
+            "cea_l_percent_text": "",
+            "cea_Tinit_Fuel_text": "298.15",
+            "cea_Tinit_Oxidizer_text": "298.15",
+            "cea_Fuel_Type_data": "Jet-A(L)",
+            "cea_Oxidizer_Type_data": "HTP_Specific",
+            "cea_Run_Type_data": "Single",
+            "cea_OF_ratio_text": "6.698",
+            "cea_m_dot_text": "1.98",
+            "cea_actual_efficiency_text": "97",
+            "cea_design_efficiency_text": "97",
+            "cea_char_length_text": "",
+            "cea_HTP_concentration_text": "94"
+        },
+        "tvc": {
+            "tvc_model_selector_text": "Castellini",
+            "tvc_rohrschneider_N_eng_input_text": "",
+            "tvc_akin_N_eng_input_text": "",
+            "tvc_castellini_thrust_kN_input_text": "",
+            "tvc_rohrschneider_thrust_kN_input_text": "",
+            "tvc_akin_thrust_kN_input_text": "",
+            "tvc_akin_pc_pa_input_text": "",
+            "tvc_castellini_type_selector_index": 1,
+            "tvc_castellini_delta_input_text": ""
+        },
+        "propellant": {
+            "total_propellant_mass": "",
+            "of_ratio": "",
+            "global_tank_calc_method": "Standard",
+            "global_castellini_inputs": {
+                "tank_type": "Separate Tanks",
+                "n_ax_max": "",
+                "n_ax_max_pl": "",
+                "max_q": "",
+                "max_g": "",
+                "p_cc": "",
+                "feed_type": "Pressure-fed",
+                "ssm": "",
+                "rocket_diameter": "",
+                "rocket_length": ""
+            },
+            "oxidizer_tank_specific_inputs": {
+                "propellant_selector_text": "Custom Propellant...",
+                "custom_propellant_density": "",
+                "material_selector_text": "Al 6061-T6 (2700 kg/m\u00b3)",
+                "custom_material_density": "",
+                "ullage": "",
+                "design_pressure": "",
+                "std_max_allowable_stress": "",
+                "std_joint_efficiency": "",
+                "standard_method_shape_selector_text": "Sphero-cylinder",
+                "std_sph_cyl_internal_radius": "",
+                "std_ellip_internal_radius": "",
+                "std_ellip_head_height": "",
+                "std_tori_internal_radius": "",
+                "std_tori_crown_radius": "",
+                "std_tori_knuckle_radius": "",
+                "std_bulkhead_internal_radius": "",
+                "std_bulkhead_shell_fraction": "0.5",
+                "std_bulkhead_head_type": "Spherical",
+                "std_bulkhead_head_height": "",
+                "std_bulkhead_crown_radius": "",
+                "std_bulkhead_knuckle_radius": "",
+                "castellini_widgets": {
+                    "SM": "Composite Tanks",
+                    "tank_shape": "Ellipsoidal",
+                    "R": "",
+                    "r_crown": "",
+                    "manual_volume": ""
+                },
+                "pablo_rachov_widgets": {
+                    "propellant_mass_input": "1428.571",
+                    "SF_cyl": "",
+                    "uts": "",
+                    "SF_sph": "",
+                    "cyl_volume": "",
+                    "sph_volume": ""
+                }
+            },
+            "fuel_tank_specific_inputs": {
+                "propellant_selector_text": "Custom Propellant...",
+                "custom_propellant_density": "",
+                "material_selector_text": "Al 6061-T6 (2700 kg/m\u00b3)",
+                "custom_material_density": "",
+                "ullage": "",
+                "design_pressure": "",
+                "std_max_allowable_stress": "",
+                "std_joint_efficiency": "",
+                "standard_method_shape_selector_text": "Sphero-cylinder",
+                "std_sph_cyl_internal_radius": "",
+                "std_ellip_internal_radius": "",
+                "std_ellip_head_height": "",
+                "std_tori_internal_radius": "",
+                "std_tori_crown_radius": "",
+                "std_tori_knuckle_radius": "",
+                "std_bulkhead_internal_radius": "",
+                "std_bulkhead_shell_fraction": "0.5",
+                "std_bulkhead_head_type": "Spherical",
+                "std_bulkhead_head_height": "",
+                "std_bulkhead_crown_radius": "",
+                "std_bulkhead_knuckle_radius": "",
+                "castellini_widgets": {
+                    "SM": "Composite Tanks",
+                    "tank_shape": "Ellipsoidal",
+                    "R": "",
+                    "r_crown": "",
+                    "manual_volume": ""
+                },
+                "pablo_rachov_widgets": {
+                    "propellant_mass_input": "571.429",
+                    "SF_cyl": "",
+                    "uts": "",
+                    "SF_sph": "",
+                    "cyl_volume": "",
+                    "sph_volume": ""
+                }
+            }
+        },
+        "pressurant": {
+            "model_text": "Adiabatic",
+            "V_ox_text": "",
+            "V_fu_text": "",
+            "P_tank_text": "",
+            "P0_text": "",
+            "T0_text": "",
+            "gas_text": "Custom Gas...",
+            "custom_r_gas_text": "",
+            "gamma_text": "",
+            "material_text": "Custom Material...",
+            "custom_rho_text": "",
+            "uts_text": "Ti-6Al-4V (950 MPa)",
+            "custom_uts_text": "",
+            "sf_uts_text": "",
+            "dim_method_text": "Spherical",
+            "torus_tube_radius_text": "",
+            "rocket_diameter_text": ""
+        },
+        "thrust": {
+            "method": "linear_fit",
+            "T_total_N_linear": "",
+            "T_total_N_rohr": "",
+            "N_eng": "",
+            "T_per_engine_N": "",
+            "m_eng_kg": "",
+            "k_thrust": "",
+            "k_sm": "",
+            "SSM": "",
+            "n_ax": "",
+            "g0": ""
+        },
+        "interstages": {
+            "items": [
+                {
+                    "name": "Interstage 1-2",
+                    "radius_m": "0.6",
+                    "stage_length_m": "10.0",
+                    "interstage_frac": "0.1",
+                    "area_density": "15.0",
+                    "stage_mass_portion": "0.0"
+                }
+            ]
+        },
+        "fairing": {
+            "enabled": false,
+            "r_cyl": "",
+            "L_cyl": "",
+            "r_base": "",
+            "L_base": "",
+            "t": "",
+            "rho_cyl": "",
+            "rho_frust": "",
+            "rho_nose": "",
+            "k_nose": "",
+            "L_nose": "",
+            "n_nose": "",
+            "delta": ""
+        },
+        "pla": {
+            "enabled": false,
+            "payload_mass": "0.0"
+        }
+    },
+    "outputs": {
+        "engine": {
+            "error_message": "Our Model (Thrust) input value (kN) must be a positive number for engine mass calculation."
+        },
+        "cea_performance": {
+            "is_enabled": true,
+            "inputs": {
+                "num_engines": 1,
+                "model_key": "our_model_thrust",
+                "model_details": {
+                    "name": "Our Model (Thrust)",
+                    "input_type": "thrust_kn",
+                    "unit": "kN",
+                    "script_key": "our_thrust",
+                    "script_uses_n_eng": false,
+                    "result_is_total": false
+                },
+                "input_value": 0.0,
+                "nozzle_geometry_enabled": true,
+                "nozzle_expansion_ratio": 60.0,
+                "nozzle_l_percent": 0.0,
+                "nozzle_char_length": 0.0,
+                "epsilon_c": 0.0,
+                "alpha_angle": 0.0,
+                "nozzle_efficiency": 98.9,
+                "cea_calculation_enabled": true,
+                "cea_P_c_desired": 50.0,
+                "cea_Ae_At": 60.0,
+                "cea_l_percent": 0.0,
+                "cea_Tinit_Fuel": 298.15,
+                "cea_Tinit_Oxidizer": 298.15,
+                "cea_Fuel_Type": "Jet-A(L)",
+                "cea_Oxidizer_Type": "HTP_Specific",
+                "cea_HTP_concentration": 94.0,
+                "cea_Run_Type": "Single",
+                "cea_OF_ratio": 6.698,
+                "cea_m_dot": 1.98,
+                "cea_actual_efficiency": 97.0,
+                "cea_design_efficiency": 97.0,
+                "cea_char_length": 0.0,
+                "rocket_outer_diameter": 1.25,
+                "cea_stage_engine_number": 1,
+                "cea_outer_diameter": 1.25
+            },
+            "P_c_Actual": 50.0,
+            "nozzle_efficiency_percent": 98.9,
+            "nozzle_efficiency_source": "user_provided",
+            "performance": {
+                "Exit_Pressure": 0.0588662,
+                "Exit_Velocity": 3013.19,
+                "C_star_actual": 1637.7456735368294
+            },
+            "thrust_geometry": {
+                "Thrust": 5943.223262846372,
+                "A_t": 0.0006290908681189669,
+                "A_e": 0.03774545208713802,
+                "De": 0.2192236352021618,
+                "De_allowed": 1.25,
+                "De_is_allowed": true,
+                "Chamber_Volume": null
+            }
+        },
+        "nozzle_geometry": {
+            "error_message": "Nozzle length percentage must be between 20 and 100. Got: 0.0"
+        },
+        "tvc": {
+            "error_message": "TVC Total Thrust (Castellini) must be positive."
+        },
+        "propellant_system_summary": {},
+        "oxidizer_tank_results": {},
+        "fuel_tank_results": {},
+        "propellant_and_tanks_results": {
+            "error_message": "[Oxidizer] Propellant density must be a positive number."
+        },
+        "pressurant": {
+            "error_message": "Initial storage pressure P0 must be positive."
+        },
+        "thrust_structure": {
+            "error_message": "Total Thrust (N) must be positive for Linear Fit."
+        },
+        "interstages": {
+            "items": [
+                {
+                    "name": "Interstage 1-2",
+                    "inputs": {
+                        "Rocket Radius (m)": 0.6,
+                        "Stage Length (m)": 10.0,
+                        "Interstage % Of Stage": 0.1,
+                        "Area Density (kg/m\u00b2)": 15.0,
+                        "Stage Mass Portion": 0.0
+                    },
+                    "outputs": {
+                        "Total Interstage Length (m)": 1.0,
+                        "Exposed Surface Area (m\u00b2)": 3.7699111843077517,
+                        "Interstage Mass (kg)": 0.0
+                    }
+                }
+            ],
+            "total_interstages_mass": 0.0
+        },
+        "fairing": {
+            "enabled": false,
+            "m_fairing": 0.0,
+            "applies_to_totals": false
+        },
+        "pla": {
+            "enabled": false,
+            "m_pla": 0.0
+        }
+    },
+    "gui_state": {
+        "current_tab_index": 0,
+        "active_stage": 1
+    },
+    "stages": 1,
+    "stage_data": {
+        "stage_1": {
+            "inputs": {
+                "engine": {
+                    "selected_model_key": "our_model_thrust",
+                    "number_of_engines_text": "1",
+                    "rocket_outer_diameter_text": "1.25",
+                    "thrust_kn_text": "",
+                    "mass_flow_rate_text": "1.98",
+                    "nozzle_epsilon_c_text": "",
+                    "nozzle_alpha_angle_text": "",
+                    "nozzle_efficiency_text": "98.9",
+                    "cea_calculation_enabled": true,
+                    "cea_P_c_desired_text": "50",
+                    "cea_Ae_At_text": "60",
+                    "cea_l_percent_text": "",
+                    "cea_Tinit_Fuel_text": "298.15",
+                    "cea_Tinit_Oxidizer_text": "298.15",
+                    "cea_Fuel_Type_data": "Jet-A(L)",
+                    "cea_Oxidizer_Type_data": "HTP_Specific",
+                    "cea_Run_Type_data": "Single",
+                    "cea_OF_ratio_text": "6.698",
+                    "cea_m_dot_text": "1.98",
+                    "cea_actual_efficiency_text": "97",
+                    "cea_design_efficiency_text": "97",
+                    "cea_char_length_text": "",
+                    "cea_HTP_concentration_text": "94"
+                },
+                "tvc": {
+                    "tvc_model_selector_text": "Castellini",
+                    "tvc_rohrschneider_N_eng_input_text": "",
+                    "tvc_akin_N_eng_input_text": "",
+                    "tvc_castellini_thrust_kN_input_text": "",
+                    "tvc_rohrschneider_thrust_kN_input_text": "",
+                    "tvc_akin_thrust_kN_input_text": "",
+                    "tvc_akin_pc_pa_input_text": "",
+                    "tvc_castellini_type_selector_index": 1,
+                    "tvc_castellini_delta_input_text": ""
+                },
+                "propellant": {
+                    "total_propellant_mass": "",
+                    "of_ratio": "",
+                    "global_tank_calc_method": "Standard",
+                    "global_castellini_inputs": {
+                        "tank_type": "Separate Tanks",
+                        "n_ax_max": "",
+                        "n_ax_max_pl": "",
+                        "max_q": "",
+                        "max_g": "",
+                        "p_cc": "",
+                        "feed_type": "Pressure-fed",
+                        "ssm": "",
+                        "rocket_diameter": "",
+                        "rocket_length": ""
+                    },
+                    "oxidizer_tank_specific_inputs": {
+                        "propellant_selector_text": "Custom Propellant...",
+                        "custom_propellant_density": "",
+                        "material_selector_text": "Al 6061-T6 (2700 kg/m\u00b3)",
+                        "custom_material_density": "",
+                        "ullage": "",
+                        "design_pressure": "",
+                        "std_max_allowable_stress": "",
+                        "std_joint_efficiency": "",
+                        "standard_method_shape_selector_text": "Sphero-cylinder",
+                        "std_sph_cyl_internal_radius": "",
+                        "std_ellip_internal_radius": "",
+                        "std_ellip_head_height": "",
+                        "std_tori_internal_radius": "",
+                        "std_tori_crown_radius": "",
+                        "std_tori_knuckle_radius": "",
+                        "std_bulkhead_internal_radius": "",
+                        "std_bulkhead_shell_fraction": "0.5",
+                        "std_bulkhead_head_type": "Spherical",
+                        "std_bulkhead_head_height": "",
+                        "std_bulkhead_crown_radius": "",
+                        "std_bulkhead_knuckle_radius": "",
+                        "castellini_widgets": {
+                            "SM": "Composite Tanks",
+                            "tank_shape": "Ellipsoidal",
+                            "R": "",
+                            "r_crown": "",
+                            "manual_volume": ""
+                        },
+                        "pablo_rachov_widgets": {
+                            "propellant_mass_input": "1428.571",
+                            "SF_cyl": "",
+                            "uts": "",
+                            "SF_sph": "",
+                            "cyl_volume": "",
+                            "sph_volume": ""
+                        }
+                    },
+                    "fuel_tank_specific_inputs": {
+                        "propellant_selector_text": "Custom Propellant...",
+                        "custom_propellant_density": "",
+                        "material_selector_text": "Al 6061-T6 (2700 kg/m\u00b3)",
+                        "custom_material_density": "",
+                        "ullage": "",
+                        "design_pressure": "",
+                        "std_max_allowable_stress": "",
+                        "std_joint_efficiency": "",
+                        "standard_method_shape_selector_text": "Sphero-cylinder",
+                        "std_sph_cyl_internal_radius": "",
+                        "std_ellip_internal_radius": "",
+                        "std_ellip_head_height": "",
+                        "std_tori_internal_radius": "",
+                        "std_tori_crown_radius": "",
+                        "std_tori_knuckle_radius": "",
+                        "std_bulkhead_internal_radius": "",
+                        "std_bulkhead_shell_fraction": "0.5",
+                        "std_bulkhead_head_type": "Spherical",
+                        "std_bulkhead_head_height": "",
+                        "std_bulkhead_crown_radius": "",
+                        "std_bulkhead_knuckle_radius": "",
+                        "castellini_widgets": {
+                            "SM": "Composite Tanks",
+                            "tank_shape": "Ellipsoidal",
+                            "R": "",
+                            "r_crown": "",
+                            "manual_volume": ""
+                        },
+                        "pablo_rachov_widgets": {
+                            "propellant_mass_input": "571.429",
+                            "SF_cyl": "",
+                            "uts": "",
+                            "SF_sph": "",
+                            "cyl_volume": "",
+                            "sph_volume": ""
+                        }
+                    }
+                },
+                "pressurant": {
+                    "model_text": "Adiabatic",
+                    "V_ox_text": "",
+                    "V_fu_text": "",
+                    "P_tank_text": "",
+                    "P0_text": "",
+                    "T0_text": "",
+                    "gas_text": "Custom Gas...",
+                    "custom_r_gas_text": "",
+                    "gamma_text": "",
+                    "material_text": "Custom Material...",
+                    "custom_rho_text": "",
+                    "uts_text": "Ti-6Al-4V (950 MPa)",
+                    "custom_uts_text": "",
+                    "sf_uts_text": "",
+                    "dim_method_text": "Spherical",
+                    "torus_tube_radius_text": "",
+                    "rocket_diameter_text": ""
+                },
+                "thrust": {
+                    "method": "linear_fit",
+                    "T_total_N_linear": "",
+                    "T_total_N_rohr": "",
+                    "N_eng": "",
+                    "T_per_engine_N": "",
+                    "m_eng_kg": "",
+                    "k_thrust": "",
+                    "k_sm": "",
+                    "SSM": "",
+                    "n_ax": "",
+                    "g0": ""
+                },
+                "interstages": {
+                    "items": [
+                        {
+                            "name": "Interstage 1-2",
+                            "radius_m": "0.6",
+                            "stage_length_m": "10.0",
+                            "interstage_frac": "0.1",
+                            "area_density": "15.0",
+                            "stage_mass_portion": "0.0"
+                        }
+                    ]
+                },
+                "fairing": {
+                    "enabled": false,
+                    "r_cyl": "",
+                    "L_cyl": "",
+                    "r_base": "",
+                    "L_base": "",
+                    "t": "",
+                    "rho_cyl": "",
+                    "rho_frust": "",
+                    "rho_nose": "",
+                    "k_nose": "",
+                    "L_nose": "",
+                    "n_nose": "",
+                    "delta": ""
+                },
+                "pla": {
+                    "enabled": false,
+                    "payload_mass": "0.0"
+                }
+            },
+            "outputs": {
+                "engine": {
+                    "error_message": "Our Model (Thrust) input value (kN) must be a positive number for engine mass calculation."
+                },
+                "cea_performance": {
+                    "is_enabled": true,
+                    "inputs": {
+                        "num_engines": 1,
+                        "model_key": "our_model_thrust",
+                        "model_details": {
+                            "name": "Our Model (Thrust)",
+                            "input_type": "thrust_kn",
+                            "unit": "kN",
+                            "script_key": "our_thrust",
+                            "script_uses_n_eng": false,
+                            "result_is_total": false
+                        },
+                        "input_value": 0.0,
+                        "nozzle_geometry_enabled": true,
+                        "nozzle_expansion_ratio": 60.0,
+                        "nozzle_l_percent": 0.0,
+                        "nozzle_char_length": 0.0,
+                        "epsilon_c": 0.0,
+                        "alpha_angle": 0.0,
+                        "nozzle_efficiency": 98.9,
+                        "cea_calculation_enabled": true,
+                        "cea_P_c_desired": 50.0,
+                        "cea_Ae_At": 60.0,
+                        "cea_l_percent": 0.0,
+                        "cea_Tinit_Fuel": 298.15,
+                        "cea_Tinit_Oxidizer": 298.15,
+                        "cea_Fuel_Type": "Jet-A(L)",
+                        "cea_Oxidizer_Type": "HTP_Specific",
+                        "cea_HTP_concentration": 94.0,
+                        "cea_Run_Type": "Single",
+                        "cea_OF_ratio": 6.698,
+                        "cea_m_dot": 1.98,
+                        "cea_actual_efficiency": 97.0,
+                        "cea_design_efficiency": 97.0,
+                        "cea_char_length": 0.0,
+                        "rocket_outer_diameter": 1.25,
+                        "cea_stage_engine_number": 1,
+                        "cea_outer_diameter": 1.25
+                    },
+                    "P_c_Actual": 50.0,
+                    "nozzle_efficiency_percent": 98.9,
+                    "nozzle_efficiency_source": "user_provided",
+                    "performance": {
+                        "Exit_Pressure": 0.0588662,
+                        "Exit_Velocity": 3013.19,
+                        "C_star_actual": 1637.7456735368294
+                    },
+                    "thrust_geometry": {
+                        "Thrust": 5943.223262846372,
+                        "A_t": 0.0006290908681189669,
+                        "A_e": 0.03774545208713802,
+                        "De": 0.2192236352021618,
+                        "De_allowed": 1.25,
+                        "De_is_allowed": true,
+                        "Chamber_Volume": null
+                    }
+                },
+                "nozzle_geometry": {
+                    "error_message": "Nozzle length percentage must be between 20 and 100. Got: 0.0"
+                },
+                "tvc": {
+                    "error_message": "TVC Total Thrust (Castellini) must be positive."
+                },
+                "propellant_system_summary": {},
+                "oxidizer_tank_results": {},
+                "fuel_tank_results": {},
+                "propellant_and_tanks_results": {
+                    "error_message": "[Oxidizer] Propellant density must be a positive number."
+                },
+                "pressurant": {
+                    "error_message": "Initial storage pressure P0 must be positive."
+                },
+                "thrust_structure": {
+                    "error_message": "Total Thrust (N) must be positive for Linear Fit."
+                },
+                "interstages": {
+                    "items": [
+                        {
+                            "name": "Interstage 1-2",
+                            "inputs": {
+                                "Rocket Radius (m)": 0.6,
+                                "Stage Length (m)": 10.0,
+                                "Interstage % Of Stage": 0.1,
+                                "Area Density (kg/m\u00b2)": 15.0,
+                                "Stage Mass Portion": 0.0
+                            },
+                            "outputs": {
+                                "Total Interstage Length (m)": 1.0,
+                                "Exposed Surface Area (m\u00b2)": 3.7699111843077517,
+                                "Interstage Mass (kg)": 0.0
+                            }
+                        }
+                    ],
+                    "total_interstages_mass": 0.0
+                },
+                "fairing": {
+                    "enabled": false,
+                    "m_fairing": 0.0,
+                    "applies_to_totals": false
+                },
+                "pla": {
+                    "enabled": false,
+                    "m_pla": 0.0
+                }
+            }
+        }
+    },
+    "stage_names": {}
+}

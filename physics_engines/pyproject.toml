@@ -1,0 +1,39 @@
+[project]
+name = "clearcut-physics-engines"
+version = "2.0.0"
+description = "Physics / calculation engines for rocket trajectory simulation, mass budgeting, and engine test analysis. Consumed in-process and via subprocesses by the ClearCut webapp's Flask backend."
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "scipy>=1.10.0",
+    "matplotlib>=3.7.0",
+    "openpyxl>=3.1.0",
+    "PyYAML>=6.0",
+    "sigfig>=1.3.0",
+    "pyproj>=3.5.0",
+    "navpy>=1.0",
+    "tqdm>=4.65.0",
+    "colorama>=0.4.6",
+    "pyatmos>=1.2.0",
+    "Pillow>=10.0.0",
+    "plotly>=5.15.0",
+    "folium>=0.14.0",
+    "astropy>=5.3",
+    "certifi>=2023.7.0",
+    "numba>=0.58.0",
+    "nptdms>=1.9.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# No desktop entry point any more; this package is imported / executed
+# by the ClearCut webapp backend (see ../backend/app.py). It is not
+# meant to be installed via `pip install -e .` for end-user launch.
+py-modules = []
+
+[tool.setuptools.package-dir]
+"" = "core"

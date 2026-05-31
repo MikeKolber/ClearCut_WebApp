@@ -1,0 +1,284 @@
+/* ─── Jump tabs (Material / Chrome-style) ──────────────────────────
+ *   Inline nav tabs in the TopBar, right of the Back button. Same
+ *   font metrics as `.TopBar-back`, full topbar height. A single
+ *   floating accent underline marks the active tab and animates
+ *   between tabs on click; positioned in JS so it tracks responsive
+ *   collapses and resize.
+ *
+ *   Used on every page inside the trajectory simulation section
+ *   (the trajectory page, plot page, debris page, …) so users have
+ *   one consistent navigation strip throughout.                       */
+
+.TP-jump-row {
+  position: relative;                    /* anchor for the underline   */
+  display: inline-flex;
+  align-items: stretch;
+  align-self: stretch;
+  height: 100%;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);  /* hairline between Back + tabs */
+}
+
+.TP-jump-tab {
+  appearance: none;
+  height: 100%;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.TP-jump-tab:not(.TP-jump-tab--active):hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.TP-jump-tab-glyph {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  transition: color 140ms ease;
+}
+
+.TP-jump-tab:hover .TP-jump-tab-glyph,
+.TP-jump-tab--active .TP-jump-tab-glyph {
+  color: var(--text);
+}
+
+.TP-jump-tab-label {
+  font-feature-settings: 'ss01' 1;
+  line-height: 1;
+}
+
+/* Active tab — slightly brighter text + heavier weight. The sliding
+ * accent underline is what really sells "you are here". */
+.TP-jump-tab--active {
+  color: var(--text);
+  font-weight: 600;
+  cursor: default;
+}
+
+/* Floating indicator — JS sets `transform` and `width` inline; this
+ * just defines the look + the animation curve. Bottom: -1px overlaps
+ * the TopBar's grey hairline by 1 px so the underline appears to sit
+ * right on the divider, like Chrome / Material. */
+.TP-jump-underline {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px 1px 0 0;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent);
+  transition:
+    transform 260ms cubic-bezier(0.4, 0, 0.2, 1),
+    width     260ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity   180ms ease;
+}
+
+.TP-jump-underline--ready { opacity: 1; }
+
+/* ─── Tab hover tooltip — mirrors the result-card on the trajectory
+ *   simulation-complete page (preview SVG + glyph + title + subtitle).
+ *   Lives inside each inactive tab, fades in on `:hover`/`:focus`. */
+
+.TP-jump-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);     /* sit just below the topbar hairline */
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  width: 200px;
+  padding-top: 6px;          /* invisible bridge to the tab so the
+                                tooltip stays open while moving cursor */
+  pointer-events: none;
+  opacity: 0;
+  z-index: 9999;             /* top of the stack, above modals/Plotly */
+  transition:
+    opacity 140ms ease 60ms,            /* small open-delay  */
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1) 60ms;
+}
+
+.TP-jump-tab:hover .TP-jump-tooltip,
+.TP-jump-tab:focus-visible .TP-jump-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: 240ms;              /* hover-delay before showing */
+}
+
+/* The card itself — same look as `.TR-result-card`. */
+.TP-jump-tooltip-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 11px;
+  background: var(--bg-card-2, #11151a);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 16px 40px -12px rgba(0, 0, 0, 0.65),
+    0 2px 8px -2px rgba(0, 0, 0, 0.5);
+}
+
+/* Accent stripe down the left edge — matches the result-card's hover
+ * state on the trajectory page. */
+.TP-jump-tooltip-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 1px 1px 0;
+}
+
+/* Tiny pointer arrow at the top of the tooltip pointing at the tab. */
+.TP-jump-tooltip-card::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: var(--bg-card-2, #11151a);
+  border-left: 1px solid var(--border-strong);
+  border-top: 1px solid var(--border-strong);
+}
+
+.TP-jump-tooltip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.TP-jump-tooltip-glyph {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 400;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+
+.TP-jump-tooltip-arrow {
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0;
+}
+
+.TP-jump-tooltip-title {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.TP-jump-tooltip-subtitle {
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+/* On narrower widths drop labels — tooltips still describe each tab. */
+@media (max-width: 1180px) {
+  .TP-jump-tab-label { display: none; }
+  .TP-jump-tab       { padding: 0 12px; gap: 0; }
+}
+
+@media (max-width: 720px) {
+  .TP-jump-tooltip   { width: 180px; }
+}
+
+/* ═══ Current-sim badge ════════════════════════════════════════════
+   Tiny pill sitting to the right of the JumpTabs strip on the
+   result pages — shows the name of the simulation currently loaded
+   into the view. The pulsing dot is a calm "active data source"
+   indicator (not a "LIVE!" stamp); the label is the sim name. */
+.TP-jump-livebadge {
+  /* Explicit height + self-centering. The TopBar's left slot uses
+     `align-items: stretch`, which without this would force the pill
+     to ~52 px tall — drawing its border right up against the top
+     edge of the bar (visually clipped). A fixed 22 px height with
+     `align-self: center` gives it a clean inline-pill look that sits
+     centred against the JumpTabs strip beside it. */
+  height: 22px;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  padding: 0 12px 0 10px;
+  font-size: 11.5px;
+  line-height: 1;
+  letter-spacing: 0.005em;
+  color: var(--text);
+  background: rgba(77, 168, 218, 0.07);
+  border: 1px solid rgba(77, 168, 218, 0.30);
+  border-radius: 999px;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Subtle inset highlight along the top edge — keeps the pill from
+     blending into the TopBar surface. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.TP-jump-livebadge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-bright);
+  box-shadow: 0 0 6px var(--accent-glow);
+  flex-shrink: 0;
+  animation: TP-livebadge-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes TP-livebadge-pulse {
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.78); }
+}
+
+.TP-jump-livebadge-name {
+  font-weight: 500;
+  color: var(--text);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 900px) {
+  .TP-jump-livebadge-name { max-width: 110px; }
+}
+@media (max-width: 720px) {
+  .TP-jump-livebadge { display: none; }
+}

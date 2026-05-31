@@ -1,0 +1,179 @@
+/* ═══ Shortcuts overlay ════════════════════════════════════════════
+   Centered modal listing every global keyboard shortcut. Opens with
+   `?`, closes with Esc / outside-click / × button. Backdrop blurs
+   the page behind so the focus stays on the card. */
+
+.SO-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: SO-fade-in 200ms ease;
+}
+
+@keyframes SO-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.SO-card {
+  position: relative;
+  width: 520px;
+  max-width: 100%;
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(18, 16, 19, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  box-shadow:
+    0 24px 60px -20px rgba(0, 0, 0, 0.75),
+    0 8px 20px -6px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: SO-scale-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes SO-scale-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.SO-head {
+  position: relative;
+  padding: 22px 26px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.SO-title {
+  margin: 4px 0 0;
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+.SO-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.SO-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.SO-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 26px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.SO-group-title {
+  margin: 0 0 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.SO-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.SO-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.SO-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+.SO-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
+.SO-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.SO-key-sep {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.SO-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.SO-row-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.SO-row-note {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+}
+
+.SO-foot {
+  padding: 12px 26px 16px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}

@@ -1,0 +1,465 @@
+/* ─── Status (right slot of TopBar) ─────────────────────────────── */
+
+.VR-status {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Main grid ─────────────────────────────────────────────── */
+
+.VR-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 24px 18px;
+  min-height: 0;
+}
+
+@media (max-width: 880px) {
+  .VR-main { grid-template-columns: 1fr; }
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────── */
+
+.VR-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  max-height: calc(100vh - 86px);
+  overflow: hidden;
+}
+
+.VR-section {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+}
+
+.VR-section:last-child { border-bottom: none; }
+
+.VR-section--scroll { min-height: 0; }
+.VR-section--grow   { flex: 1; }
+
+.VR-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+}
+
+.VR-count {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+}
+
+.VR-test-name {
+  padding: 0 14px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  word-wrap: break-word;
+}
+
+.VR-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 6px 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.VR-listItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.VR-listItem:hover {
+  background: var(--bg-hover);
+}
+
+.VR-listItem--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.VR-listItem-name {
+  flex: 1;
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.VR-listItem--active .VR-listItem-name { color: var(--accent-bright); }
+
+.VR-listItem-size {
+  font-size: 9px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.VR-empty {
+  padding: 20px 12px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* Shortcuts list */
+.VR-shortcuts {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.VR-shortcuts li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.VR-shortcuts li > span {
+  margin-left: auto;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.VR-shortcuts kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+}
+
+/* ─── Stage / video area ─────────────────────────────────────── */
+
+.VR-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 460px;
+  max-height: calc(100vh - 86px);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.VR-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+}
+
+.VR-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 5;
+  pointer-events: none;
+}
+.VR-corner::before,
+.VR-corner::after {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+.VR-corner--tl { top: 8px;    left: 8px;    }
+.VR-corner--tr { top: 8px;    right: 8px;   }
+.VR-corner--bl { bottom: 8px; left: 8px;    }
+.VR-corner--br { bottom: 8px; right: 8px;   }
+
+.VR-corner--tl::before { top: 0; left: 0; width: 12px; height: 1px; }
+.VR-corner--tl::after  { top: 0; left: 0; width: 1px;  height: 12px; }
+.VR-corner--tr::before { top: 0; right: 0; width: 12px; height: 1px; }
+.VR-corner--tr::after  { top: 0; right: 0; width: 1px;  height: 12px; }
+.VR-corner--bl::before { bottom: 0; left: 0; width: 12px; height: 1px; }
+.VR-corner--bl::after  { bottom: 0; left: 0; width: 1px;  height: 12px; }
+.VR-corner--br::before { bottom: 0; right: 0; width: 12px; height: 1px; }
+.VR-corner--br::after  { bottom: 0; right: 0; width: 1px;  height: 12px; }
+
+.VR-video {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: #000;
+  outline: none;
+  cursor: pointer;
+  object-fit: contain;
+}
+
+.VR-stage:fullscreen { background: #000; }
+.VR-stage:fullscreen .VR-corner { display: none; }
+
+/* ─── Controls bar (floating overlay) ────────────────────────── */
+
+.VR-controls {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(12, 14, 18, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+/* Auto-hide while playing + mouse idle */
+.VR-stage--idle .VR-controls {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+}
+
+.VR-stage--idle { cursor: none; }
+
+.VR-stage:fullscreen .VR-controls {
+  left: 24px;
+  right: 24px;
+  bottom: 24px;
+}
+
+.VR-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 30px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.VR-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.VR-btn--primary {
+  width: 38px;
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.VR-btn--primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  box-shadow: 0 0 18px var(--accent-glow);
+}
+
+/* Rewind / fast-forward chevron buttons */
+.VR-btn--wind {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+  padding-bottom: 2px;
+}
+
+/* Slow-motion ½ button */
+.VR-btn--slomo {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  font-feature-settings: 'frac' 1;
+}
+
+/* Active state for « / » when a cycle is engaged */
+.VR-btn--active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+/* Scrubber */
+.VR-scrubber {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: #1a1f26;
+  cursor: pointer;
+  outline: none;
+}
+
+.VR-scrubber::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  cursor: pointer;
+  margin-top: -4px;
+  box-shadow: 0 0 12px var(--accent-glow);
+  transition: transform 120ms ease;
+}
+
+.VR-scrubber::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.VR-scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* Time + frame readout */
+.VR-time {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  min-width: 170px;
+  text-align: right;
+}
+
+.VR-time-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.VR-time-cur {
+  color: var(--text);
+  font-weight: 600;
+  font-feature-settings: 'tnum' 1;
+}
+
+.VR-time-sep,
+.VR-time-tot {
+  color: var(--text-dim);
+}
+
+.VR-time-frame {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+}
+
+/* ─── Floating rate / direction badge ────────────────────────── */
+
+.VR-rate-badge {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  background: rgba(12, 14, 18, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  animation: VR-rate-pop 200ms ease-out;
+}
+
+@keyframes VR-rate-pop {
+  from { transform: translate(-50%, -6px); opacity: 0; }
+  to   { transform: translate(-50%, 0);    opacity: 1; }
+}
+
+.VR-rate-badge {
+  transform: translateX(-50%);
+}
+
+.VR-rate-icon {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+.VR-rate-value {
+  font-feature-settings: 'tnum' 1;
+  font-size: 15px;
+  color: var(--accent-bright, var(--accent));
+}
+
+.VR-rate-label {
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}

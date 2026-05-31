@@ -1,0 +1,387 @@
+/* ═══ Error toast — shared across the app ════════════════════════════
+   Drops in from the top of the viewport whenever the user tries to
+   do something they can't yet do. Two accent variants (rose for
+   trajectory, amber for debris). Same animated rocket sketch in every
+   instance so the visual language is unified.
+   Source: src/components/ErrorToast/ErrorToast.js */
+
+.error-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  z-index: 1000;
+  margin: 0;
+  padding: 18px 20px;
+  background: rgba(18, 16, 19, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(220, 64, 80, 0.45);
+  border-left: 2px solid rgba(220, 64, 80, 0.95);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 22px 56px -18px rgba(220, 64, 80, 0.45),
+    0 10px 28px -8px rgba(0, 0, 0, 0.7);
+  /* Final centred state. The `translateX(-50%)` is repeated inside
+     every animation keyframe because CSS replaces the transform whole
+     when an animation runs. */
+  transform: translateX(-50%);
+  animation: error-toast-in 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Debris-accent variant — amber instead of rose. Lines up with the
+   debris sidebar tab, Run Debris button, and Trajectory-Required
+   banner, so a debris-side error stays in the same colour family. */
+.error-toast--debris {
+  border-color: rgba(245, 158, 11, 0.48);
+  border-left-color: var(--warning, #f59e0b);
+  box-shadow:
+    0 22px 56px -18px rgba(245, 158, 11, 0.5),
+    0 10px 28px -8px rgba(0, 0, 0, 0.7);
+}
+
+/* Success variant — cyan-green for "Saved as X" / "Overwritten X"
+   confirmations. Same shape and animations as the error variants,
+   just a different palette and a static checkmark icon (instead of
+   the trembling rocket) so the meaning reads at a glance. */
+.error-toast--success {
+  border-color: rgba(74, 222, 128, 0.45);
+  border-left-color: var(--success, #4ade80);
+  box-shadow:
+    0 22px 56px -18px rgba(74, 222, 128, 0.45),
+    0 10px 28px -8px rgba(0, 0, 0, 0.7);
+}
+
+@keyframes error-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-28px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/* Reverse animation triggered by the dismiss button. Slightly faster
+   than the entrance for snappier dismissals. `forwards` keeps the
+   end state pinned so there's no flash-back before unmount. */
+.error-toast--leaving {
+  animation: error-toast-out 240ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes error-toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-28px) scale(0.96);
+  }
+}
+
+/* ── Head row ──────────────────────────────────────────────────── */
+
+.error-toast-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.error-toast-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 2px;
+}
+
+.error-toast-title {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  text-shadow: var(--shadow-text-sm, none);
+}
+
+.error-toast-summary {
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+}
+
+.error-toast-x {
+  appearance: none;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.error-toast-x:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Footer row: Show-all toggle + optional CTA button ─────────── */
+
+.error-toast-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.error-toast-toggle {
+  appearance: none;
+  padding: 5px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.error-toast-toggle:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-strong);
+}
+
+.error-toast-toggle-chev {
+  display: inline-block;
+  font-size: 9px;
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.error-toast-toggle--open .error-toast-toggle-chev {
+  transform: rotate(90deg);
+}
+
+/* Primary call-to-action button (e.g. "Go to Trajectory"). Tinted
+   in the toast's accent colour so it reads as the suggested next
+   step rather than competing with the × dismiss. Pushed to the
+   right side of the footer row via `margin-left: auto`. */
+.error-toast-action {
+  appearance: none;
+  margin-left: auto;
+  height: 28px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(255, 162, 178, 0.96);
+  background: transparent;
+  border: 1px solid rgba(220, 64, 80, 0.55);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.error-toast-action:hover {
+  background: rgba(220, 64, 80, 0.12);
+  border-color: rgba(220, 64, 80, 0.85);
+  color: #ffb3c0;
+  box-shadow: 0 0 12px rgba(220, 64, 80, 0.22);
+}
+
+.error-toast-action--debris {
+  color: rgba(252, 211, 77, 0.95);
+  border-color: rgba(245, 158, 11, 0.55);
+}
+.error-toast-action--debris:hover {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.9);
+  color: #ffd57a;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.22);
+}
+
+.error-toast-action--success {
+  color: rgba(167, 243, 208, 0.95);
+  border-color: rgba(74, 222, 128, 0.55);
+}
+.error-toast-action--success:hover {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.9);
+  color: #bbf7d0;
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.22);
+}
+
+.error-toast-action-arrow {
+  font-size: 13px;
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.error-toast-action:hover .error-toast-action-arrow {
+  transform: translateX(2px);
+}
+
+/* ── Expanded per-field list (validation only, count > 1) ─────── */
+
+.error-toast-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  animation: error-toast-list-in 180ms ease-out;
+}
+
+@keyframes error-toast-list-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.error-toast-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 3px;
+}
+
+.error-toast-bullet {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: rgba(220, 64, 80, 0.85);
+  line-height: 1.4;
+}
+.error-toast--debris .error-toast-bullet {
+  color: var(--warning, #f59e0b);
+}
+.error-toast--success .error-toast-bullet {
+  color: var(--success, #4ade80);
+}
+
+/* ── Success-tick SVG ─────────────────────────────────────────── */
+.error-toast-tick {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  overflow: visible;
+}
+
+/* Ring pulses once subtly when the toast lands. */
+.error-toast-tick-ring {
+  transform-origin: 22px 22px;
+  animation: error-toast-tick-ring 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes error-toast-tick-ring {
+  0%   { transform: scale(0.7); opacity: 0; }
+  60%  { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+/* Check "writes itself in" by tweening stroke-dashoffset. ~28 is the
+   approximate path length for the d="M 13 22 L 20 29 L 32 16" check. */
+.error-toast-tick-path {
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  animation: error-toast-tick-draw 460ms cubic-bezier(0.65, 0, 0.35, 1) 220ms forwards;
+}
+
+@keyframes error-toast-tick-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ── Stuck-on-the-pad rocket animation ─────────────────────────── */
+.error-toast-rocket {
+  flex-shrink: 0;
+  width: 42px;
+  height: 58px;
+  overflow: visible;
+}
+
+.error-toast-rocket-body {
+  transform-origin: 16px 30px;
+  will-change: transform;
+  animation: error-toast-rocket-tremble 0.55s ease-in-out infinite alternate;
+}
+
+@keyframes error-toast-rocket-tremble {
+  from { transform: rotate(-1.6deg) translateY(0); }
+  to   { transform: rotate( 1.6deg) translateY(-0.4px); }
+}
+
+.error-toast-rocket-flame {
+  transform-origin: 16px 30px;
+  will-change: transform, opacity;
+  animation: error-toast-rocket-flame 0.34s ease-in-out infinite alternate;
+}
+
+@keyframes error-toast-rocket-flame {
+  from { transform: scaleX(0.7) scaleY(0.55); opacity: 0.55; }
+  to   { transform: scaleX(1.08) scaleY(1.0);  opacity: 1; }
+}
+
+.error-toast-rocket-smoke {
+  will-change: transform, opacity;
+  animation: error-toast-rocket-smoke 1.4s ease-out infinite;
+}
+.error-toast-rocket-smoke--late {
+  animation-delay: 0.7s;
+}
+
+@keyframes error-toast-rocket-smoke {
+  0%   { opacity: 0;   transform: translate(0, 0)    scale(0.6); }
+  25%  { opacity: 0.7; }
+  100% { opacity: 0;   transform: translate(0, -12px) scale(1.7); }
+}
+
+/* ── Mobile fallback ───────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .error-toast {
+    width: auto;
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    transform: none;
+    animation: error-toast-in-mobile 360ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes error-toast-in-mobile {
+    from { opacity: 0; transform: translateY(-28px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .error-toast--leaving {
+    animation: error-toast-out-mobile 240ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+  @keyframes error-toast-out-mobile {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(-28px) scale(0.96); }
+  }
+}

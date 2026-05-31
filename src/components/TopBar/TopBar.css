@@ -1,0 +1,122 @@
+.TopBar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: stretch;             /* children can choose to fill height */
+  gap: 16px;
+  height: var(--topbar-h);
+  padding: 0 18px;
+  background: rgba(0, 0, 0, 0.85);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  /* Sticky to the viewport — even on pages where the document itself
+   * scrolls (long sidebars, narrow viewports), the TopBar with the
+   * tabs stays pinned to the top so the user can always navigate.
+   * z-index 60 keeps it above chart panes, sidebar content, Plotly
+   * SVGs, and any tab tooltips spilling out of it. */
+  position: sticky;
+  top: 0;
+  z-index: 60;
+}
+
+/* ── left cluster (Back + optional inline tabs) ───────────────── */
+.TopBar-left {
+  justify-self: start;
+  display: inline-flex;
+  align-items: stretch;             /* let tabs fill full height       */
+  gap: 0;                           /* spacing handled per-child       */
+  min-width: 0;
+}
+
+/* Back button — full topbar height, minimal chrome, hover-fill.
+ * Same font metrics as the inline tabs so the left cluster reads
+ * as one uniform group. */
+.TopBar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.TopBar-back:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.TopBar-back-arrow {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-dim);
+  transition: color 140ms ease, transform 140ms ease;
+}
+
+.TopBar-back--left:hover .TopBar-back-arrow {
+  color: var(--text);
+  transform: translateX(-2px);
+}
+
+.TopBar-back--right:hover .TopBar-back-arrow {
+  color: var(--text);
+  transform: translateX(2px);
+}
+
+.TopBar-back--right {
+  /* Right-side variant: stand out a bit more so it reads as "EXIT". */
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.TopBar-back--right:hover {
+  background: rgba(239, 68, 68, 0.10);
+  color: #ff8a96;
+}
+.TopBar-back--right:hover .TopBar-back-arrow {
+  color: #ff8a96;
+}
+
+/* Optional vertical hairline between Back and inline tabs.
+ * Rendered via the .TopBar-left's child gap helper (see jump-row). */
+
+/* ── center title ─────────────────────────────────────────────── */
+.TopBar-title {
+  margin: 0;
+  align-self: center;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: var(--shadow-text-sm);
+}
+
+/* Empty placeholder for the center column when no title is supplied —
+ * keeps the 1fr / auto / 1fr grid stable so the left and right slots
+ * don't reflow. */
+.TopBar-title-spacer {
+  display: block;
+}
+
+/* ── right slot (status, etc.) ────────────────────────────────── */
+.TopBar-right {
+  justify-self: end;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

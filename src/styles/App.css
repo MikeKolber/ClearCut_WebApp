@@ -1,0 +1,41 @@
+.App {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  isolation: isolate;
+}
+
+/* Subtle vignette + 1px grid for HUD depth */
+.App::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px) 0 0 / 80px 80px,
+    radial-gradient(ellipse 1200px 600px at 50% -10%, rgba(77, 168, 218, 0.06), transparent 70%),
+    radial-gradient(ellipse 1000px 500px at 50% 110%, rgba(255, 255, 255, 0.025), transparent 70%);
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 100%);
+}
+
+.App > * {
+  position: relative;
+  z-index: 1;
+}
+
+.App-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  animation: pageFadeIn 220ms ease;
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

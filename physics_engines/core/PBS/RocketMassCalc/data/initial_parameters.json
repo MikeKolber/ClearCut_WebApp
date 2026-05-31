@@ -1,0 +1,74 @@
+{
+    "Engine": {
+        "num_engines": 1,
+        "method_key": "our_model_thrust",
+        "thrust_kN": 200,
+        "mass_flow_rate": 17
+    },
+    "TVC": {
+        "model": "Castellini",
+        "N_eng": 1,
+        "thrust_kN": 200,
+        "type_idx": 1,
+        "delta": 6
+    },
+    "Pressurant": {
+        "model": "Adiabatic",
+        "V_ox": 0.120,
+        "V_fu": 0.115,
+        "P_tank": 3.0e6,
+        "P0": 2.86e8,
+        "T0": 293.0,
+        "R_gas": 2077.0,
+        "gamma": 1.667,
+        "rho_mat": 4429.0,
+        "sigma_y": 880e6,
+        "SF": 3.5
+    },
+    "Tank_Common": {
+        "method": "Standard",
+        "ullage": 0.05,
+        "mat_density": 2700.0,
+        "prop_density": 1141.0,
+        "pressure": 3.5e6
+    },
+    "Tank_Standard": {
+        "stress": 250e6,
+        "efficiency": 0.9,
+        "shape": "Sphero-cylinder",
+        "shape_params": {
+            "internal_radius": 0.4,
+            "cylindrical_length": 0.8
+        }
+    },
+    "Tank_Castellini": {
+        "type": "Fuel",
+        "SM": "Composite Tanks",
+        "TT": "Common Bulkhead",
+        "shape": "Manual",
+        "R": 1.0,
+        "r_crown": 3.0,
+        "L": 4.0,
+        "rocket_length": "15",
+        "rocket_diameter": "1.2",
+        "manual_volume": 1.0,
+        "ssm": 1.5,
+        "max_q": 40000.0,
+        "max_g": 7.0,
+        "n_ax_max": 7.0,
+        "n_ax_max_pl": 7.0,
+        "p_cc": 1000000.0,
+        "feed_type": "Pressure-fed"
+    },
+    "Tank_Pablo": {
+        "propellant_mass_input": 1000.0,
+        "SF_cyl": 2.5,
+        "uts": 515000000.0,
+        "SF_sph": 2.0,
+        "cyl_volume": 1.8,
+        "sph_volume": 0.2
+    },
+    "Thrust_Structure": {
+        "thrust_N": 200000
+    }
+}

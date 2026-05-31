@@ -1,0 +1,136 @@
+# Rocket Structure Configuration File
+# All units are specified in comments
+
+Fairing:
+  Head:
+    Shape: Parabolic
+    Back Diameter: 1.5  # meters
+    Length: 2  # meters
+  Cylindrical Section:
+    Back Diameter: 1.5  # meters
+    Length: 2.5  # meters
+  Transition:
+    Front Diameter: 1.5  # meters
+    Back Diameter: 1.2  # meters
+    Length: 0.5  # meters
+  Total Length: 5  # meters
+
+payload_parameters:
+  mass_kg: 285  # kilograms
+  radius_m: 0.6  # meters
+  length_m: 1  # meters
+
+engine_parameters:
+  stage1_engine_mass_kg: 135  # kilograms (per engine)
+  stage1_engine_length_m3: 0.8  # meters (m3 likely a typo, should be m)
+  stage2_engine_mass_kg: 135  # kilograms (per engine)
+  stage2_engine_length_m3: 0.8  # meters
+  stage3_engine_mass_kg: 60  # kilograms (per engine)
+  stage3_engine_length_m3: 0.8  # meters
+  engine_inner_radius_m: 0.18  # meters
+  engine_outer_radius_m: 0.2  # meters
+
+number_of_engines:
+  stage1_number_of_engines: 9  # count
+  stage2_number_of_engines: 3  # count
+  stage3_number_of_engines: 1  # count
+
+tank_parameters:
+  fuel_tank_mass_ratio: 0.12  # ratio (tank mass / propellant mass)
+  oxidizer_tank_mass_ratio: 0.12  # ratio (tank mass / propellant mass)
+  fuel_tank_head_mass: 30  # kg
+  oxidizer_tank_head_mass: 30  # kg
+  tank_thickness_m: 0.01  # meters (1cm wall thickness) #TODO: too much wall thickness
+
+interstage_parameters:
+  stage12_interstage:
+    mass_kg: 25  # kilograms
+    length_m: 0.6  # meters
+  stage23_interstage:
+    mass_kg: 25  # kilograms
+    length_m: 0.6  # meters
+
+fairing_parameters:
+  mass_kg: 150  # kilograms
+  radius_m: 0.75  # meters
+  length_m: 5  # meters
+
+error_handling:
+  default_engine_length_m: 0.5  # meters
+  default_tank_structure_length_m: 0.2  # meters
+
+notes:
+  stage1_engine_volume_note: "height .8m and diameter (0.2m - 0.18m) - hollow cylinder (outer - inner)"
+  fuel_vs_ox_percentage_in_total_propellant: "fuel: 12.5%, ox: 87.5%"
+
+Stage 1:
+  propellant_order: "fuel_first"  # Order of propellants: "fuel_first" or "ox_first"
+  Total Propellant Mass [kg]: 8100  # kilograms
+  Stage Max Diameter [m]: 1.2  # meters
+  Propellants O/F ratio: 7  # oxidizer/fuel mass ratio
+  Ox. Density [kg/m^3]: 1400  # kilograms per cubic meter
+  Fuel. Density [kg/m^3]: 800  # kilograms per cubic meter
+  Tank Type and Head type: "Common bulkhead with"
+  Height to Diameter Ratio (h/D): 0.5  # dimensionless
+  Ullage in %: 5  # percentage
+  Engine Throat Diameter [m]: 0.067  # meters
+  Engine Ae/At: 20  # area ratio (exit area / throat area)
+  Fraction of Conical length [80]: 80  # percentage
+  Fuel. Mass [kg]: 1012.5  # kilograms
+  Ox. Mass [kg]: 7087.5  # kilograms
+  Ox. Volume [m^3]: 5.0625  # cubic meters
+  Total propellant volume: 6.328125  # cubic meters
+  Tank Head length [m]: 0.6  # meters
+  Common Tank cylindrical length [m]: 5.089779966  # meters
+  Nozzle Parabolic length [m]: 0.352571863  # meters
+  Engine chamber estimation [m]: 0.3  # meters
+  Length Margin in %: 20  # percentage
+  # Estimated non optimal length [m]: 8.330822196  # meters
+
+Stage 2:
+  propellant_order: "fuel_first"  # Order of propellants: "fuel_first" or "ox_first"
+  Total Propellant Mass [kg]: 3315  # kilograms - used to be 3315
+  Stage Max Diameter [m]: 1.2  # meters
+  O/F Ratio: 7  # oxidizer/fuel mass ratio
+  Ox. Density [kg/m^3]: 1400  # kilograms per cubic meter
+  Fuel. Density [kg/m^3]: 800  # kilograms per cubic meter
+  Tank Type and Head type: "Common bulkhead"
+  Height to Diameter Ratio (h/D): 0.5  # dimensionless
+  Ullage in %: 5  # percentage
+  Engine Throat Diameter [m]: 0.067  # meters
+  Engine Ae/At: 20  # area ratio (exit area / throat area)
+  Fraction of Conical Length [80]: 80  # percentage
+  Fuel. Mass [kg]: 414.375  # kilograms used to be
+  Ox. Mass [kg]: 2900.625  # kilograms used to be
+  Ox. Volume [m^3]: 2.0171875  # cubic meters
+  Total propellant volume: 2.58984375  # cubic meters
+  Tank Head length [m]: 0.6  # meters
+  Common Tank cylindrical length [m]: 1.610448696  # meters
+  Nozzle Parabolic length [m]: 0.537848925  # meters
+  Engine chamber estimation [m]: 0.3  # meters
+  Length Margin in %: 20  # percentage
+  #Estimated non optimal length [m]: 4.377955093  # meters
+
+Stage 3:
+  propellant_order: "fuel_first"  # Order of propellants: "fuel_first" or "ox_first"
+  Total Propellant Mass [kg]: 1135  # kilograms
+  Stage Max Diameter [m]: 1.2  # meters
+  O/F Ratio: 6.9  # oxidizer/fuel mass ratio
+  Ox. Density [kg/m^3]: 1400  # kilograms per cubic meter
+  Fuel. Density [kg/m^3]: 800  # kilograms per cubic meter
+  Tank Type and Head type: "Common"
+  Height to Diameter Ratio (h/D): 0.4  # dimensionless
+  Ullage in %: 5  # percentage
+  Engine Throat Diameter [m]: 0.0489  # meters
+  Engine Ae/At: 60  # area ratio (exit area / throat area)
+  Fraction of Conical Length [80]: 80  # percentage
+  Fuel. Mass [kg]: 143.67  # kilograms
+  Ox. Mass [kg]: 991.33  # kilograms
+  Ox. Volume [m^3]: 0.708092224  # cubic meters
+  Total propellant volume: 0.887680832  # cubic meters
+  Tank Head length [m]: 0.6  # meters
+  Common Tank cylindrical length [m]: 0.691819768  # meters
+  Nozzle Parabolic length [m]: 0.49631925  # meters
+  Engine chamber estimation [m]: 0.3  # meters
+  Length Margin in %: 20  # percentage
+  # Estimated non optimal length [m]: 2.331003232  # meters 

@@ -1,0 +1,200 @@
+/* ─── Compare page — sidebar + plot ─────────────────────────────── */
+
+.CMP-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.CMP-status--err {
+  color: #ff8a8a;
+}
+
+.CMP-main {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
+  padding: 14px 0 18px;
+  height: calc(100vh - var(--topbar-h, 56px));
+  box-sizing: border-box;
+}
+
+@media (max-width: 760px) {
+  .CMP-main { grid-template-columns: 1fr; height: auto; }
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
+
+.CMP-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 12px 0 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.CMP-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.CMP-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.CMP-section-count {
+  font-size: 10px;
+  color: var(--text-dim, #7a8593);
+  letter-spacing: 0.5px;
+}
+
+.CMP-section-foot {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.CMP-mini-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.4px;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.CMP-mini-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.CMP-mini-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.CMP-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.CMP-rows--scroll {
+  max-height: 38vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.CMP-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 120ms ease, color 120ms ease;
+  user-select: none;
+}
+.CMP-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+.CMP-row--on {
+  color: var(--text);
+}
+.CMP-row--err {
+  color: #ff8a8a;
+}
+
+.CMP-row-cb {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent, #4DA8DA);
+}
+
+.CMP-row-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  transition: box-shadow 140ms ease;
+}
+
+.CMP-row-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.CMP-row-tag {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+  margin-left: 6px;
+  padding: 2px 5px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--accent, #4DA8DA);
+  background: rgba(77, 168, 218, 0.12);
+  border: 1px solid rgba(77, 168, 218, 0.4);
+  border-radius: 3px;
+}
+
+.CMP-row-unit {
+  color: var(--text-dim, #7a8593);
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.CMP-row-meta {
+  font-size: 10px;
+  color: var(--text-dim, #7a8593);
+  margin-left: auto;
+  letter-spacing: 0.4px;
+}
+
+.CMP-empty {
+  font-size: 11px;
+  color: var(--text-dim, #7a8593);
+  letter-spacing: 0.4px;
+  padding: 6px 8px;
+}
+
+/* ── Plot canvas ────────────────────────────────────────────────── */
+
+.CMP-canvas {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-right: 16px;
+  position: relative;
+  overflow: hidden;
+  min-height: 460px;
+}
+
+.CMP-empty-canvas {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim, #7a8593);
+  letter-spacing: 0.4px;
+}

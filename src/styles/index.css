@@ -1,0 +1,128 @@
+/* ─────────────────────────────────────────────────────────────────
+   ClearCut design tokens — black / monochrome with a single warm
+   coral accent (engine-flame). Inspired by SpaceX livestream chrome.
+   ───────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces (near-black stack) */
+  --bg:           #000000;
+  --bg-elev:      #0a0a0a;
+  --bg-card:      #0f0f0f;
+  --bg-card-2:    #131313;
+  --bg-hover:     #1a1a1a;
+  --bg-input:     #050505;
+
+  /* Borders */
+  --border:        rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --border-bright: rgba(255, 255, 255, 0.28);
+
+  /* Text — `--text-dim` is bumped from #525252 → #767676 so it
+     clears WCAG AA contrast (4.5:1) against the near-black surfaces
+     when used for stats / eyebrows / secondary labels. */
+  --text:           #f5f5f5;
+  --text-secondary: #a3a3a3;
+  --text-dim:       #767676;
+  --text-faint:     #2a2a2a;
+
+  /* Accent — steel blue, matching the "SPACE" wordmark in the logo */
+  --accent:         #4DA8DA;
+  --accent-bright:  #6FBDE6;
+  --accent-soft:    rgba(77, 168, 218, 0.10);
+  --accent-glow:    rgba(77, 168, 218, 0.45);
+
+  /* Functional status */
+  --success: #4ade80;
+  --warning: #f59e0b;
+  --error:   #ef4444;
+
+  /* Type */
+  --font-sans: 'Inter Tight', -apple-system, BlinkMacSystemFont,
+               'SF Pro Display', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', 'Menlo', 'Consolas', monospace;
+
+  /* Subtle text-shadow utilities */
+  --shadow-text-sm:  0 1px 2px rgba(0, 0, 0, 0.55);
+  --shadow-text-md:  0 2px 6px rgba(0, 0, 0, 0.5);
+  --shadow-text-lg:  0 4px 22px rgba(0, 0, 0, 0.6);
+
+  --tracking-wide: 0.16em;
+  --tracking-mid:  0.06em;
+  --tracking-tight: -0.01em;
+
+  /* Radii (sharp control-room feel) */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+
+  /* Layout */
+  --topbar-h: 52px;
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: var(--tracking-tight);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv11' 1, 'ss01' 1, 'tnum' 1;
+  color: var(--text);
+  background: var(--bg);
+  overflow-x: hidden;
+}
+
+code, .mono {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: 0;
+}
+
+button {
+  font-family: inherit;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+::-webkit-scrollbar      { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.06); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+
+/* Generic uppercase label */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ── Accessibility: respect "Reduce motion" OS setting ──────────────
+   Suppresses every CSS-animation and transition globally — trembling
+   rocket, orbit icon, page-fade-in, starfield twinkle, progress
+   interpolation, etc. The app stays fully usable; just the kinetic
+   flourishes hold still. Keeps a tiny non-zero duration so JS that
+   listens for `transitionend` still fires. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

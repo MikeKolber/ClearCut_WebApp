@@ -1,0 +1,532 @@
+/* ═══ Raw Data — virtualized spreadsheet ═══════════════════════════
+ *   Monospace, dense, dark. Sticky header on top, sticky time column
+ *   on the left, color-coded category accent strip per header cell.   */
+
+/* Status text in the TopBar's right slot (rows · cols summary). */
+.RD-status {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-feature-settings: 'tnum' 1;
+  white-space: nowrap;
+}
+.RD-status--err { color: #ef4444; }
+
+/* ─── Toolbar (under the topbar, above the table) ──────────── */
+
+.RD-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;          /* tighter — full-bleed Raw Data */
+  /* Slightly opaquer + blurred so when it's sticky the table body
+   * doesn't show through and ghost the toolbar text. */
+  background: rgba(13, 16, 20, 0.94);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border-bottom: 1px solid var(--border);
+  /* Pin directly under the TopBar so the controls + tab strip + table
+   * column header all stay visible while the table body scrolls. */
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 50;
+}
+
+.RD-toolbar-left,
+.RD-toolbar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── Buttons (Columns + Download) ─────────────────────────── */
+
+.RD-btn,
+.RD-dl-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.RD-btn:hover:not(:disabled),
+.RD-dl-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-bright);
+  color: var(--text);
+}
+
+.RD-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.RD-btn--ghost {
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.RD-btn--on {
+  background: rgba(77, 168, 218, 0.10);
+  border-color: rgba(77, 168, 218, 0.65);
+  color: var(--accent);
+}
+
+.RD-btn--mini {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.RD-cols-count {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+}
+
+.RD-dl-btn--accent {
+  color: var(--accent);
+  border-color: rgba(77, 168, 218, 0.55);
+}
+.RD-dl-btn--accent:hover {
+  background: rgba(77, 168, 218, 0.10);
+  border-color: rgba(77, 168, 218, 0.85);
+  color: var(--accent);
+  box-shadow: 0 0 14px rgba(77, 168, 218, 0.22);
+}
+
+.RD-hidden-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+/* ─── Columns popover ──────────────────────────────────────── */
+
+.RD-cols { position: relative; }
+
+.RD-cols-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 360px;
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.65);
+  z-index: 80;
+  overflow: hidden;
+  animation: RD-pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes RD-pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+.RD-cols-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.RD-cols-search {
+  flex: 1;
+  appearance: none;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+.RD-cols-search:focus { border-color: var(--accent); }
+
+.RD-cols-pop-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.RD-cols-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 6px 8px;
+}
+
+.RD-cols-group + .RD-cols-group { margin-top: 6px; }
+
+.RD-cols-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 4px;
+}
+
+.RD-cols-group-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.RD-cols-group-count {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.RD-cols-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.RD-cols-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.RD-cols-row:hover { background: var(--bg-hover); }
+.RD-cols-row--on   { color: var(--text); }
+
+.RD-cols-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.RD-cols-row input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.RD-cols-row input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 2.5px;
+  top: 0;
+  width: 4px;
+  height: 7px;
+  border-right: 1.5px solid var(--bg);
+  border-bottom: 1.5px solid var(--bg);
+  transform: rotate(45deg);
+}
+
+.RD-cols-row-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.RD-cols-row-unit {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+/* ─── Canvas wrap (body) ───────────────────────────────────── */
+/*  The wrap is `position: relative` so the canvas can overlay it
+ *  absolutely. The scroller sits underneath the canvas with an
+ *  empty spacer that drives the scrollbar; the canvas is purely
+ *  presentational (`pointer-events: none`) so all mouse / wheel
+ *  / scroll events reach the scroller naturally.                  */
+
+.RD-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg);
+}
+
+.RD-scroller {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  /* Custom scrollbars to match the dark chrome. */
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-width: thin;
+}
+.RD-scroller::-webkit-scrollbar { width: 12px; height: 12px; }
+.RD-scroller::-webkit-scrollbar-track { background: transparent; }
+.RD-scroller::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.10);
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background-clip: padding-box;
+}
+.RD-scroller::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.20);
+  background-clip: padding-box;
+}
+
+.RD-canvas-spacer {
+  /* dimensions are inline-styled by JS to match total rows × cols */
+}
+
+.RD-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  /* Hint the compositor that we'll be repainting often. */
+  will-change: transform, contents;
+}
+
+/* ─── Loading / error overlay (shows while the binary fetch
+ *      is streaming in). ─────────────────────────────────── */
+
+.RD-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 14, 18, 0.7);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;
+  z-index: 5;
+  font-size: 11px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-secondary);
+}
+
+.RD-overlay--err { color: #ef4444; }
+
+.RD-overlay-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.RD-overlay-bar {
+  width: 220px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.RD-overlay-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright, #80c8f0));
+  box-shadow: 0 0 8px rgba(77, 168, 218, 0.55);
+  transition: width 120ms ease-out;
+}
+
+/* ─── Frozen column-header band ────────────────────────────
+ *   Sits between the toolbar and the scrolling table. Sticky to
+ *   the document at top: (topbar + toolbar) so the param names
+ *   stay visible no matter what scrolls — table body, document,
+ *   you name it. The horizontal scroll is mirrored from the
+ *   scroller below via JS so columns stay aligned with the body
+ *   underneath.                                                */
+
+.RD-frozen {
+  flex-shrink: 0;
+  position: sticky;
+  top: calc(var(--topbar-h) + 50px);   /* topbar + toolbar height */
+  z-index: 40;
+  /* Solid color + no backdrop-filter here. The TopBar and toolbar
+   * already provide blurred chrome, and stacking three blurred
+   * sticky bands forces the GPU compositor to regenerate layers on
+   * every scroll frame — measurable jank on large tables. */
+  background: rgb(11, 14, 18);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+/* Clipping wrapper — limits the header's visible width to the
+ * viewport while the inner header is `total cols × COL_WIDTH`
+ * wide. We `scrollLeft` this in JS to mirror the body's
+ * horizontal scroll.
+ *
+ * `overflow-x: scroll` (instead of hidden) makes this a scrolling
+ * ancestor for `position: sticky` — that's what lets the time-column
+ * header cell stick to the left during horizontal scroll. The
+ * scrollbar itself is hidden so users only see the body's bar, and
+ * wheel events are forwarded to the body so the two never desync. */
+.RD-header-clip {
+  overflow-x: scroll;
+  overflow-y: hidden;
+  width: 100%;
+  scrollbar-width: none;
+}
+.RD-header-clip::-webkit-scrollbar { display: none; height: 0; width: 0; }
+
+.RD-header {
+  display: flex;
+  height: var(--rd-header-h, 38px);
+}
+
+.RD-cell {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-feature-settings: 'tnum' 1;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Header cells — left-aligned label, right-aligned unit, accent edge */
+
+.RD-cell--head {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px 6px 14px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  border-right: 1px solid var(--border);
+}
+
+.RD-cell-head-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Unit pill — sits to the right of the label, accent-tinted so it's
+ * easy to spot at a glance. Always rendered (even for unitless
+ * columns like Mach) so every column header has the same horizontal
+ * layout. Mach et al get a dim italic em-dash variant. */
+.RD-cell-head-unit {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--accent);
+  background: rgba(77, 168, 218, 0.10);
+  border: 1px solid rgba(77, 168, 218, 0.28);
+  border-radius: 999px;
+  font-feature-settings: 'tnum' 1;
+  line-height: 1.4;
+}
+
+/* Mach et al — no SI unit. Render the pill as a dim italic em-dash
+ * so layout stays consistent without misleading the reader. */
+.RD-cell-head-unit--empty {
+  color: var(--text-dim);
+  background: transparent;
+  border-color: var(--border);
+  font-style: italic;
+}
+
+/* Tiny accent stripe on the left of each header cell (category color) */
+.RD-cell-head-cat {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  opacity: 0.85;
+}
+
+/* Sticky-left treatment for the time column (header + body) */
+.RD-cell--sticky {
+  position: sticky;
+  left: 0;
+  background: rgba(13, 16, 20, 0.96);
+  z-index: 1;            /* above non-sticky body cells in the same row */
+}
+.RD-cell--head.RD-cell--sticky {
+  z-index: 4;            /* above body sticky cells when overlapping */
+}
+/* Body rows live in the canvas now; the only DOM rows we still
+ * style are the header cells above (.RD-cell--head). All the old
+ * .RD-row / .RD-body styles are gone with the React-rendered rows. */
+
+/* Empty state */
+.RD-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  letter-spacing: var(--tracking-mid);
+  color: var(--text-dim);
+  padding: 36px;
+  text-align: center;
+}
+
+/* ─── Responsive ───────────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .RD-toolbar { padding: 8px 14px; gap: 8px; }
+  .RD-cols-pop { width: calc(100vw - 32px); left: 0; }
+  .RD-dl-btn span:last-child,
+  .RD-btn span:not(.RD-cols-count):last-child { display: inline; }
+}

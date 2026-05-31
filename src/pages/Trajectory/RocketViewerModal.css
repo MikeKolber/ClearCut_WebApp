@@ -1,0 +1,629 @@
+/* ─── Rocket Viewer Modal — overrides on top of DebrisFilesModal.css ─ */
+
+.RVM-backdrop {
+  /* Pure black backdrop — the 3D scene benefits from sitting in
+     real darkness so its glow and Earth-tinted background read at
+     full intensity, no compositing translucency to mute them. */
+  background: #000;
+  padding: 12px;
+}
+
+.RVM-modal {
+  width: 98vw;
+  height: 96vh;
+  max-width: none;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  /* Tighter, more cinematic shell — thinner border, near-black
+     surface, and a soft outer glow so the modal feels like a
+     viewport into space rather than a chrome-y dialog. */
+  background: #03060c;
+  border: 1px solid rgba(120, 140, 200, 0.14);
+  box-shadow:
+    0 60px 120px -30px rgba(0, 0, 0, 0.85),
+    0 0 80px -10px rgba(60, 100, 180, 0.18) inset;
+}
+
+/* ─── Header ──────────────────────────────────────────────────── */
+
+.RVM-head {
+  flex: 0 0 auto;
+}
+
+.RVM-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-secondary, #a8b3bf);
+  letter-spacing: 0.5px;
+  margin-left: auto;
+  margin-right: 16px;
+}
+
+.RVM-sep {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Body — canvas + overlays ─────────────────────────────────── */
+
+.RVM-body {
+  flex: 1 1 auto;
+  position: relative;
+  background: #02050a;
+  overflow: hidden;
+}
+
+.RVM-canvas {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+}
+.RVM-canvas:active { cursor: grabbing; }
+.RVM-canvas canvas {
+  outline: none;
+  display: block;
+}
+
+.RVM-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #a8b3bf);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  padding: 24px;
+  text-align: center;
+}
+.RVM-empty--overlay {
+  /* Translucent over the canvas while three.js boots. */
+  background: rgba(2, 5, 10, 0.6);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.RVM-empty--err { color: #ff8a8a; }
+
+/* ─── Legend (bottom-left) ─────────────────────────────────────── */
+
+.RVM-legend {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 4px 18px;
+  padding: 10px 14px;
+  background: rgba(8, 8, 22, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  font-size: 10.5px;
+  color: rgba(176, 176, 192, 0.95);
+  letter-spacing: 0.4px;
+  z-index: 4;
+}
+
+.RVM-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.RVM-legend-sw {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+/* ─── Toolbar (bottom-right) ───────────────────────────────────── */
+
+.RVM-toolbar {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 4;
+}
+
+.RVM-toolbar-row {
+  display: flex;
+  gap: 6px;
+}
+
+/* ─── Primary Disassemble / Reassemble button ──────────────────
+ *
+ * Two-tone colour scheme tied to the current action:
+ *   • Idle (label = "Disassemble") → ORANGE — reads as "warning,
+ *     about to do something disruptive". Eye-catching, draws
+ *     first-time users to the marquee feature.
+ *   • Engaged (label = "Reassemble", `--on`) → BLUE — calm,
+ *     reverts to safety. Mirrors the "danger / safe" pattern users
+ *     already know from action vs cancel buttons.
+ *
+ * Sized larger than the secondary toggles so the button reads as
+ * the primary CTA of the viewer.
+ */
+.RVM-toolbtn-primary {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI',
+    system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+
+  /* Default / "Disassemble" — orange. */
+  color: #ffb46b;
+  background:
+    linear-gradient(180deg,
+      rgba(180, 95, 25, 0.55) 0%,
+      rgba(110, 55, 12, 0.55) 100%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter:         blur(14px) saturate(160%);
+  border: 1px solid rgba(255, 160, 75, 0.55);
+  border-radius: 10px;
+  box-shadow:
+    0 12px 32px -10px rgba(255, 130, 50, 0.35),
+    0 1px 0 rgba(255, 200, 140, 0.18) inset;
+
+  cursor: pointer;
+  transition:
+    background  180ms ease,
+    border-color 180ms ease,
+    color       180ms ease,
+    transform   180ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow  180ms ease;
+}
+.RVM-toolbtn-primary:hover {
+  color: #ffd9b0;
+  border-color: rgba(255, 175, 95, 0.85);
+  background:
+    linear-gradient(180deg,
+      rgba(210, 115, 35, 0.70) 0%,
+      rgba(135, 65, 15, 0.70) 100%);
+  transform: translateY(-1px);
+  box-shadow:
+    0 16px 40px -10px rgba(255, 140, 60, 0.45),
+    0 1px 0 rgba(255, 210, 160, 0.22) inset;
+}
+.RVM-toolbtn-primary:active {
+  transform: translateY(0);
+}
+/* Engaged state — rocket is currently disassembled, button reads
+   "Reassemble". Blue palette: same accent the rest of the modal
+   uses for "neutral / reset" actions. */
+.RVM-toolbtn-primary--on {
+  color: #9bd0ee;
+  border-color: rgba(111, 194, 238, 0.65);
+  background:
+    linear-gradient(180deg,
+      rgba(35, 80, 130, 0.55) 0%,
+      rgba(18, 40, 70, 0.55) 100%);
+  box-shadow:
+    0 12px 32px -10px rgba(80, 160, 220, 0.35),
+    0 1px 0 rgba(180, 220, 245, 0.18) inset;
+}
+.RVM-toolbtn-primary--on:hover {
+  color: #c6e7f8;
+  border-color: rgba(111, 194, 238, 0.90);
+  background:
+    linear-gradient(180deg,
+      rgba(50, 105, 160, 0.70) 0%,
+      rgba(25, 55, 95, 0.70) 100%);
+  box-shadow:
+    0 16px 40px -10px rgba(80, 160, 220, 0.50),
+    0 1px 0 rgba(200, 230, 250, 0.22) inset;
+}
+
+.RVM-toolbtn-primary-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.RVM-toolbtn-primary-label {
+  white-space: nowrap;
+}
+
+/* ─── Navigation cluster (zoom + pan) ──────────────────────────
+   Top-right corner of the canvas, separated from the bottom-right
+   action toolbar so the two don't pile into a tall awkward stack.
+   Glassy panel grouping a zoom row above a 3×3 pan d-pad (arrows at
+   the compass points, recenter in the middle). */
+.RVM-nav {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 7px;
+  background: rgba(8, 8, 22, 0.7);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+}
+
+.RVM-nav-zoom {
+  display: flex;
+  gap: 5px;
+}
+
+.RVM-nav-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 28px);
+  grid-template-rows: repeat(3, 28px);
+  gap: 4px;
+}
+.RVM-nav-up     { grid-column: 2; grid-row: 1; }
+.RVM-nav-left   { grid-column: 1; grid-row: 2; }
+.RVM-nav-center { grid-column: 2; grid-row: 2; }
+.RVM-nav-right  { grid-column: 3; grid-row: 2; }
+.RVM-nav-down   { grid-column: 2; grid-row: 3; }
+
+.RVM-nav-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  line-height: 1;
+  color: rgba(220, 225, 240, 0.85);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;        /* let pointer-hold drive pan, not scroll */
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.RVM-nav-zoom .RVM-nav-btn {
+  width: 44px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.RVM-nav-btn:hover {
+  background: rgba(80, 120, 170, 0.35);
+  color: #fff;
+  border-color: rgba(140, 190, 230, 0.5);
+}
+.RVM-nav-btn:active {
+  background: rgba(110, 160, 210, 0.5);
+}
+/* Recenter pip reads as a target/crosshair, slightly dimmer until
+   hovered so the directional arrows lead the eye. */
+.RVM-nav-center {
+  color: rgba(160, 200, 235, 0.7);
+  font-size: 15px;
+}
+
+/* ─── Secondary toolbar buttons ────────────────────────────────── */
+
+.RVM-toolbtn {
+  appearance: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  color: rgba(220, 225, 240, 0.85);
+  background: rgba(8, 8, 22, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.RVM-toolbtn:hover {
+  background: rgba(40, 40, 70, 0.85);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.RVM-toolbtn--off {
+  color: rgba(180, 185, 200, 0.6);
+}
+.RVM-toolbtn--on {
+  /* "Active" state — used by the Explode toggle. Soft amber so it
+     reads as "engaged" without yelling for attention. */
+  color: #ffd58a;
+  border-color: rgba(255, 200, 100, 0.55);
+  background: rgba(255, 200, 100, 0.10);
+}
+.RVM-toolbtn--ghost {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ─── Stats overlay (top-left) ─────────────────────────────────
+   Compact two-column key/value grid showing total height, max
+   diameter, masses. Same backdrop-blur chrome as the other
+   overlays so they read as a family. */
+.RVM-stats {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  min-width: 200px;
+  background: rgba(8, 8, 22, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  z-index: 4;
+}
+
+.RVM-stats-head .eyebrow {
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+}
+
+.RVM-stats-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.RVM-stats-key {
+  color: rgba(180, 195, 215, 0.65);
+}
+.RVM-stats-val {
+  color: rgba(232, 238, 247, 0.95);
+  text-align: right;
+}
+.RVM-stats-val--bold {
+  color: #ffd58a;
+  font-weight: 600;
+}
+.RVM-stats-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 4px 0 2px;
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.04));
+}
+
+/* ─── Focus slider (left side, vertical) ───────────────────────── */
+
+.RVM-focus {
+  position: absolute;
+  /* Pushed below the stats panel so they stack rather than overlap.
+     Stats panel is ~190px tall on average; the slider takes the rest
+     of the left edge down to the legend. */
+  top: 240px;
+  left: 14px;
+  bottom: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  background: rgba(8, 8, 22, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  z-index: 4;
+}
+
+.RVM-focus-label {
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.RVM-focus-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-writing-mode: vertical-lr;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 4px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.RVM-focus-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(160, 175, 220, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.RVM-focus-slider::-webkit-slider-thumb:hover {
+  background: rgba(190, 205, 240, 0.9);
+}
+.RVM-focus-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(160, 175, 220, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+}
+
+/* ─── Hint chip (bottom-left) ──────────────────────────────────
+   Moved to the left edge so it doesn't collide with the toolbar,
+   which now lives in the bottom-right corner. */
+
+.RVM-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 16px;
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.28);
+  text-transform: uppercase;
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* ─── Per-component tooltip (raycast-driven) ────────────────────
+ *
+ * Floats over the canvas, follows the cursor with a small
+ * offset, fades in 1 s after a component has been continuously
+ * hovered. Headline is sans-serif and bright; the parameter rows
+ * are mono so numeric values align cleanly. Frosted-glass body so
+ * it sits over the rocket without fully obscuring it.
+ *
+ * `pointer-events: none` is critical — the bubble can't intercept
+ * the raycast that's keeping it open, otherwise it would flicker
+ * the moment it appeared under the cursor.
+ */
+
+.RVM-3d-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 11px 14px 12px;
+
+  background:
+    linear-gradient(180deg,
+      rgba(20, 26, 34, 0.92) 0%,
+      rgba(15, 19, 26, 0.92) 100%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter:         blur(14px) saturate(160%);
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  box-shadow:
+    0 16px 40px -12px rgba(0, 0, 0, 0.65),
+    0 4px 12px  -4px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+
+  /* Fade in once the 1-second hover-delay timer fires. The JS
+     side toggles `style.opacity = 1`, so the transition runs only
+     at show time — instant hide on mouse-leave is fine. */
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.RVM-3d-tt-title {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI',
+    system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: rgba(245, 248, 252, 0.98);
+  margin-bottom: 6px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.RVM-3d-tt-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.RVM-3d-tt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 18px;
+  font-family:
+    ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo,
+    Consolas, monospace;
+  font-size: 11px;
+}
+
+.RVM-3d-tt-key {
+  color: rgba(180, 190, 202, 0.72);
+  letter-spacing: 0;
+}
+
+.RVM-3d-tt-val {
+  color: rgba(245, 248, 252, 0.95);
+  font-weight: 500;
+  white-space: nowrap;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ─── 3D dimension-line labels ─────────────────────────────────
+ *
+ * Small pill labels that float at the midpoint of each dimension
+ * line (component + total). Positioned in JS each frame by
+ * projecting the line's world midpoint to screen space; the
+ * `transform: translate(-50%, -50%)` centres the pill on that
+ * point. `pointer-events: none` so they never block the raycast.
+ */
+.RVM-3d-dim-label {
+  position: absolute;
+  /* Anchored at the bar's projected midpoint, then lifted fully
+     ABOVE that point (−160% of its own height) so the pill floats
+     over the bar rather than sitting on it — the label is often
+     wider than a short bar and would otherwise be unreadable. */
+  transform: translate(-50%, -160%);
+  pointer-events: none;
+  z-index: 9;
+  white-space: nowrap;
+  padding: 3px 8px;
+  font-family:
+    ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo,
+    Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: rgba(245, 248, 252, 0.98);
+  background: rgba(12, 16, 24, 0.78);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(140, 190, 230, 0.35);
+  border-radius: 5px;
+  box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.7);
+  /* Opacity is driven from JS (fades in lockstep with the lines),
+     but transition it so any snap reads smooth. */
+  transition: opacity 120ms ease;
+}
+
+/* ─── Mobile fallback — collapse overlays so the canvas isn't
+       covered on tiny screens. */
+@media (max-width: 600px) {
+  .RVM-modal { height: 92vh; width: 96vw; }
+  .RVM-meta { display: none; }
+  .RVM-legend { display: none; }
+  .RVM-focus { top: auto; bottom: 14px; left: 50%; transform: translateX(-50%);
+               flex-direction: row; height: auto; bottom: auto; top: auto; }
+}

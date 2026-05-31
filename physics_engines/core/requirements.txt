@@ -1,0 +1,44 @@
+# ClearCut Calculation Engines — Python Dependencies
+#
+# This package now contains ONLY the simulation / calculation code
+# imported and spawned by the ClearCut webapp's Flask backend
+# (`backend/app.py`). The desktop Tk-based GUI has been removed.
+#
+# The webapp itself also needs Flask + flask-cors; those live in
+# `backend/requirements.txt` at the repo root. Install both for a
+# fully working dev environment:
+#
+#     pip install -r backend/requirements.txt
+#     pip install -r physics_engines/core/requirements.txt
+#
+# Requires Python >= 3.10.
+
+# --- Core math & data ---
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+openpyxl>=3.1.0
+PyYAML>=6.0
+sigfig>=1.3.0
+
+# --- Trajectory simulation ---
+pyproj>=3.5.0
+navpy>=1.0
+tqdm>=4.65.0
+colorama>=0.4.6
+pyatmos>=1.2.0
+
+# --- 3-D rocket sketch (texture/logo image processing) ---
+Pillow>=10.0.0
+
+# --- Debris analysis ---
+plotly>=5.15.0
+folium>=0.14.0
+astropy>=5.3
+certifi>=2023.7.0
+# numba is an optional accelerator for debris_batch (guarded import)
+numba>=0.58.0
+
+# --- Engine Test data analysis (backend reads TDMS in-process) ---
+nptdms>=1.9.0
