@@ -4,6 +4,8 @@ import TopBar from '../../components/TopBar/TopBar';
 import {
   TRAJECTORY_PARAMS,
   STAGE_PARAMS_PER_STAGE,
+  STRUCTURE_PARAMS,
+  LOCKED_MIRRORS,
   DEBRIS_PARAMS,
   PRESETS,
   STAGE_ACCENTS,
@@ -17,8 +19,10 @@ import {
   cancelDebrisRun,
   listTrajectoryPresets,
   saveTrajectoryPreset,
+  deleteTrajectoryPreset,
   listDebrisPresets,
   saveDebrisPreset,
+  deleteDebrisPreset,
   loadSimulationFile,
   loadDebrisRun,
   saveCurrentSimulation,
@@ -96,15 +100,35 @@ function collectEmpty(schema) {
 
 /* Same idea for the trajectory form, which has flat trajectory fields
    PLUS Stage1 / Stage2 / Stage3 sub-objects (each shaped like
-   `STAGE_PARAMS_PER_STAGE`). Returns a value matching the live `params`
-   shape — empty strings everywhere, including inside each stage. */
+   `STAGE_PARAMS_PER_STAGE`) PLUS a `structure` sub-object carrying the
+   ~30 fields that used to live in `rocket_structure.yaml`. Returns a
+   value matching the live `params` shape — empty strings for the
+   trajectory fields the user must fill in, and *populated defaults*
+   for structure fields (since the YAML used to provide those values
+   for free and we don't want to force the user to type 30 numbers
+   just to run a default rocket). */
 function emptyTrajectoryParams() {
   return {
     ...collectEmpty(TRAJECTORY_PARAMS),
     Stage1: collectEmpty(STAGE_PARAMS_PER_STAGE),
     Stage2: collectEmpty(STAGE_PARAMS_PER_STAGE),
     Stage3: collectEmpty(STAGE_PARAMS_PER_STAGE),
+    structure: defaultStructureParams(),
   };
+}
+
+/* Default values for the Structure tab — pulled from each field's
+   `default` in STRUCTURE_PARAMS. Used as the starting point both for
+   `emptyTrajectoryParams()` and for the "Reset to defaults" button
+   inside the Structure tab. */
+function defaultStructureParams() {
+  const out = {};
+  for (const fields of Object.values(STRUCTURE_PARAMS)) {
+    for (const [key, meta] of Object.entries(fields)) {
+      out[key] = meta.default ?? '';
+    }
+  }
+  return out;
 }
 
 /* sessionStorage key for the run-state snapshot lives in `./runState`
@@ -163,15 +187,13 @@ function Trajectory() {
   // cards we render. 'trajectory' is the default first run; clicking
   // the Debris Analysis result card flips this to 'debris'.
   const [runKind, setRunKind] = useState(() => persisted.runKind || 'trajectory');
-  const [progressPct, setProgressPct] = useState(() =>
-    persisted.phase === 'success' ? 100 : 0
-  );
-  // displayPct = what the bar actually renders. It's a buffered playback
-  // of progressPct: we record every poll into `progressSamplesRef` with a
-  // wall-clock timestamp, render the bar at `now() - PROGRESS_LAG_MS`,
-  // and linearly interpolate between the two samples bracketing that
-  // virtual cursor. End result: motion is continuous at the actual
-  // simulator rate, paid for with ~500 ms of intentional delay.
+  // displayPct = what the progress bar actually renders. We record
+  // every backend poll into `progressSamplesRef` with a wall-clock
+  // timestamp, then a rAF loop renders the bar at `now() -
+  // PROGRESS_LAG_MS`, linearly interpolating between the two samples
+  // that bracket that virtual cursor. End result: motion is
+  // continuous at the actual simulator rate, paid for with ~500 ms
+  // of intentional delay.
   const [displayPct, setDisplayPct] = useState(() =>
     persisted.phase === 'success' ? 100 : 0
   );
@@ -181,9 +203,16 @@ function Trajectory() {
   );
   const [elapsed, setElapsed] = useState(() => persisted.elapsed || 0);
 
-  const [params, setParams] = useState(
-    () => persisted.params || emptyTrajectoryParams()
-  );
+  const [params, setParams] = useState(() => {
+    // Backfill `structure` from defaults when the persisted state
+    // pre-dates the Structure tab (so existing tabs in flight don't
+    // lose their other fields, but every Structure field is present).
+    const base = persisted.params || emptyTrajectoryParams();
+    return {
+      ...base,
+      structure: { ...defaultStructureParams(), ...(base.structure || {}) },
+    };
+  });
   const [presetName, setPresetName] = useState(
     () => persisted.presetName || 'Custom'
   );
@@ -340,6 +369,21 @@ function Trajectory() {
     }));
   }, []);
 
+  // Structure-tab setter — nests into `params.structure` so the whole
+  // form state stays in one object. Preset save/load and validation
+  // both walk the same `params` tree so they pick up structure changes
+  // for free.
+  const setStructureParam = useCallback((key, value) => {
+    setParams((p) => ({
+      ...p,
+      structure: { ...(p.structure || {}), [key]: value },
+    }));
+  }, []);
+
+  const resetStructureParams = useCallback(() => {
+    setParams((p) => ({ ...p, structure: defaultStructureParams() }));
+  }, []);
+
   const setDebrisParam = useCallback((key, value) => {
     setDebrisParams((p) => ({ ...p, [key]: value }));
   }, []);
@@ -359,7 +403,19 @@ function Trajectory() {
     }
     const preset = allPresets[name];
     if (!preset) return;
-    setParams(preset);
+    // Backfill the Structure block from defaults if the preset was
+    // saved before the Structure tab existed (or if individual fields
+    // are missing). User-provided structure values from the preset
+    // override the defaults; everything else falls back. Same idea
+    // as the Python side's `STRUCTURE_DEFAULTS` resolution order.
+    const merged = {
+      ...preset,
+      structure: {
+        ...defaultStructureParams(),
+        ...(preset.structure || {}),
+      },
+    };
+    setParams(merged);
     setPresetName(name);
     setActiveStage(1);
   }, [allPresets]);
@@ -367,8 +423,14 @@ function Trajectory() {
   // Wipe the trajectory form back to the cold-start empty state. Used by
   // the "Clear" button in the sidebar footer — mirror of the debris
   // tab's clear action so both tabs offer the same Save + Clear combo.
+  // Preserves the user's Structure tab edits — those have their own
+  // dedicated "Reset to Defaults" button, so clearing the Simulation
+  // tab shouldn't silently wipe geometry the user spent time tuning.
   const clearTrajectoryParams = useCallback(() => {
-    setParams(emptyTrajectoryParams());
+    setParams((p) => ({
+      ...emptyTrajectoryParams(),
+      structure: p.structure || defaultStructureParams(),
+    }));
     setPresetName('Custom');
     setActiveStage(1);
   }, []);
@@ -499,6 +561,46 @@ function Trajectory() {
     if (saved?.saved_name) setDebrisPresetName(saved.saved_name);
   }, [debrisParams, debrisMode, customPoints, refreshUserDebrisPresets]);
 
+  /* ── Preset deletion (trajectory + debris) ─────────────────────────
+     PresetPicker enters select-mode and emits the chosen names; we
+     issue the DELETE calls in parallel, refresh the list, and reset
+     the active preset label if it pointed at one of the removed items. */
+  const handleDeleteTrajectoryPresets = useCallback(async (names) => {
+    if (!Array.isArray(names) || names.length === 0) return;
+    const failures = [];
+    await Promise.all(names.map(async (n) => {
+      try { await deleteTrajectoryPreset(n); }
+      catch (err) { failures.push(`${n}: ${err.message || String(err)}`); }
+    }));
+    await refreshUserPresets();
+    if (names.includes(presetName)) setPresetName('Custom');
+    if (failures.length > 0) {
+      setRunError({
+        kind: 'runtime',
+        title: 'Could not delete some presets',
+        details: failures,
+      });
+    }
+  }, [presetName, refreshUserPresets]);
+
+  const handleDeleteDebrisPresets = useCallback(async (names) => {
+    if (!Array.isArray(names) || names.length === 0) return;
+    const failures = [];
+    await Promise.all(names.map(async (n) => {
+      try { await deleteDebrisPreset(n); }
+      catch (err) { failures.push(`${n}: ${err.message || String(err)}`); }
+    }));
+    await refreshUserDebrisPresets();
+    if (names.includes(debrisPresetName)) setDebrisPresetName('Custom');
+    if (failures.length > 0) {
+      setRunError({
+        kind: 'runtime',
+        title: 'Could not delete some debris presets',
+        details: failures,
+      });
+    }
+  }, [debrisPresetName, refreshUserDebrisPresets]);
+
   /* ── Mission action handlers (Load Sim / Load Debris / Compare) ── */
 
   // Modal-mode Load Simulation: shows a list of saved sims (server-side
@@ -516,19 +618,37 @@ function Trajectory() {
   /* Common state-update path for "we now have a fresh trajectory
      loaded into the UI" — used by both the saved-list pick and the
      browse-from-disk flow. Drops the page into the success state so
-     the result cards show up immediately. */
-  const finishLoadedSim = useCallback((displayName) => {
+     the result cards show up immediately, AND repopulates the form
+     params from the loaded sim.
+     ─── How `params` is rebuilt ───────────────────────────────────
+       1. If the backend returned `fullParams` (the JSON sidecar that
+          Save Simulation now writes alongside the XLSX), use it as-is
+          — that's the original form state at save time, complete with
+          stage sub-objects and orbit target. Best-case round trip.
+       2. Otherwise apply `derived` (5 keys the backend pulls straight
+          from the output CSV's first/last rows) on top of an empty
+          form. Honest about what's recoverable from a flat output.   */
+  const finishLoadedSim = useCallback((displayName, derived, fullParams) => {
     setRunError(null);
     setRunId(null);
     setRunKind('trajectory');
     setElapsed(0);
-    setProgressPct(0);
     setRestoredSuccess(false);
     setTrajectoryDoneInSession(true);
     // A loaded sim invalidates any prior debris run — the on-disk
     // debris CSVs no longer match the trajectory we just replaced.
     setDebrisDoneInSession(false);
     setPresetName(displayName.replace(/\.[^.]+$/, ''));
+    if (fullParams && typeof fullParams === 'object') {
+      // Use the saved form state verbatim — gives us back the orbit
+      // target, per-stage burn times, mass fractions, everything.
+      setParams(fullParams);
+    } else {
+      // Best-effort partial repop. Reset other fields to '' so the
+      // mission summary shows "—" instead of stale prior values.
+      setParams({ ...emptyTrajectoryParams(), ...(derived || {}) });
+    }
+    setActiveStage(1);
     setPhase('success');
   }, []);
 
@@ -539,8 +659,9 @@ function Trajectory() {
     if (!file) return;
 
     try {
-      await loadSimulationFile(file);
-      finishLoadedSim(file.name);
+      const res = await loadSimulationFile(file);
+      // Uploaded files never have a sidecar; only `derived` applies.
+      finishLoadedSim(file.name, res?.derived, null);
     } catch (err) {
       setRunError({
         kind: 'runtime',
@@ -552,9 +673,14 @@ function Trajectory() {
 
   /* Saved-list pick from the LoadSimulationModal — server has already
      copied the file into output/simulation_output.csv, we just need
-     to roll the UI into the success state. */
+     to roll the UI into the success state. If the saved entry has a
+     `.json` sidecar we get the full form state back too. */
   const onSavedSimLoaded = useCallback((res) => {
-    finishLoadedSim(res?.name || 'saved simulation');
+    finishLoadedSim(
+      res?.name || 'saved simulation',
+      res?.derived,
+      res?.params,
+    );
   }, [finishLoadedSim]);
 
   /* Browse-from-disk fallback inside the modal — close the modal and
@@ -583,7 +709,13 @@ function Trajectory() {
     if (!trimmed) return;
 
     try {
-      const res = await saveCurrentSimulation(trimmed, false);
+      // Pass the live form params so the backend can drop a JSON
+      // sidecar next to the XLSX. That sidecar carries the full
+      // config — orbit target, per-stage burn times, mass fractions,
+      // everything — so loading the saved sim later restores the
+      // full form state, not just the 5 fields derivable from the
+      // output columns.
+      const res = await saveCurrentSimulation(trimmed, false, params);
       setRunError({
         kind: 'success',
         title: 'Simulation saved',
@@ -597,7 +729,7 @@ function Trajectory() {
         );
         if (!ok) return;
         try {
-          const res2 = await saveCurrentSimulation(trimmed, true);
+          const res2 = await saveCurrentSimulation(trimmed, true, params);
           setRunError({
             kind: 'success',
             title: 'Simulation overwritten',
@@ -618,7 +750,7 @@ function Trajectory() {
         });
       }
     }
-  }, [presetName]);
+  }, [presetName, params]);
 
   const handleLoadDebris = useCallback(() => {
     setLoadDebrisOpen(true);
@@ -741,13 +873,11 @@ function Trajectory() {
         const s = await statusFn(runId);
         if (cancelled) return;
         const livePct = (s.progress || 0) * 100;
-        setProgressPct(livePct);
         pushSample(livePct);
         setElapsed(Math.floor(s.elapsed_s || 0));
         setProgressLabel(`${s.phase || 'Running'}…`);
         if (s.status === 'success') {
           // Pin the buffer at 100 so the playback head finishes there.
-          setProgressPct(100);
           pushSample(100);
 
           // Mark trajectory or debris as fresh-in-session so we know
@@ -829,7 +959,6 @@ function Trajectory() {
    */
   const startRun = useCallback(async (kind) => {
     setRunError(null);
-    setProgressPct(0);
     setElapsed(0);
     setRestoredSuccess(false);
     progressSamplesRef.current = [
@@ -970,7 +1099,6 @@ function Trajectory() {
        Run themselves when they want to launch the next sim, which
        lets them edit params first if they want to. */
     setPhase('idle');
-    setProgressPct(0);
     setElapsed(0);
     setRunError(null);
   }, [phase, runId, runKind, tab, trajectoryDoneInSession, startRun]);
@@ -1002,7 +1130,6 @@ function Trajectory() {
       // Reset to idle so the Run button is visible (in case we're on
       // the success state right now). The user reviews + clicks Run.
       setPhase('idle');
-      setProgressPct(0);
       setElapsed(0);
       setRunError(null);
       return;
@@ -1053,8 +1180,10 @@ function Trajectory() {
                     onSavePreset={handleSavePreset}
                     onClear={clearTrajectoryParams}
                     presets={allPresets}
+                    deletablePresetNames={userPresets}
+                    onDeletePresets={handleDeleteTrajectoryPresets}
                   />
-                ) : (
+                ) : tab === 'debris' ? (
                   <DebrisTab
                     params={debrisParams}
                     setParam={setDebrisParam}
@@ -1068,6 +1197,15 @@ function Trajectory() {
                     customPoints={customPoints}
                     setCustomPoints={setCustomPoints}
                     onClear={resetDebrisDefaults}
+                    deletablePresetNames={userDebrisPresets}
+                    onDeletePresets={handleDeleteDebrisPresets}
+                  />
+                ) : (
+                  <StructureTab
+                    params={params}
+                    setStructureParam={setStructureParam}
+                    onClear={resetStructureParams}
+                    onJumpToSimulation={() => setTab('params')}
                   />
                 )}
               </div>
@@ -1180,11 +1318,17 @@ function Trajectory() {
 /* ═══ Sidebar ════════════════════════════════════════════════ */
 
 function SidebarHeader({ tab, onTabChange, onToggle }) {
+  const eyebrow = (
+    tab === 'params'    ? 'Parameters' :
+    tab === 'debris'    ? 'Debris Config' :
+    tab === 'structure' ? 'Structure' :
+    'Parameters'
+  );
   return (
     <header className="TR-sidebar-head">
       <div className="TR-sidebar-eyebrow-row">
         <span className="eyebrow TR-sidebar-eyebrow">
-          {tab === 'params' ? 'Parameters' : 'Debris Config'}
+          {eyebrow}
         </span>
         <button
           type="button"
@@ -1215,6 +1359,16 @@ function SidebarHeader({ tab, onTabChange, onToggle }) {
         >
           Debris
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'structure'}
+          className={`TR-tab${tab === 'structure' ? ' TR-tab--active TR-tab--structure' : ''}`}
+          onClick={() => onTabChange('structure')}
+          title="Geometric & structural parameters (CoM / MoI)"
+        >
+          Structure
+        </button>
       </div>
     </header>
   );
@@ -1223,6 +1377,9 @@ function SidebarHeader({ tab, onTabChange, onToggle }) {
 function ParamsTab({
   params, setParam, setStageParam, activeStage, setActiveStage,
   noOfStages, presetName, onLoadPreset, onSavePreset, onClear, presets,
+  /* `deletablePresetNames` is the map of user-saved presets (keys =
+     deletable names). `onDeletePresets(names[])` is the parent action. */
+  deletablePresetNames = null, onDeletePresets = null,
 }) {
   // Single-open accordion across all sections in this tab. Pre-load with
   // the first trajectory section open. Stage section keys are 'stage-N'.
@@ -1248,9 +1405,15 @@ function ParamsTab({
         recentKey="trajectory"
         firstTimeHint={
           presetName === 'Custom' && isParamsEmpty(params)
-            ? 'Pick a preset to get started'
+            ? 'Pick a preset or fill in values below'
             : null
         }
+        deletableNames={
+          deletablePresetNames
+            ? new Set(Object.keys(deletablePresetNames))
+            : null
+        }
+        onDelete={onDeletePresets}
       />
 
       <div className="TR-divider" />
@@ -1354,12 +1517,41 @@ function ParamsTab({
 function PresetPicker({
   presetName, onSelect, presets = PRESETS, variant = 'trajectory', hint,
   firstTimeHint, recentKey = null,
+  /* `deletableNames` — Set of preset names that live on disk and can
+     therefore be deleted from this picker. Hardcoded presets shipped
+     in code aren't in this set, so they stay safe. When the set is
+     empty the ⋮ menu button is hidden. */
+  deletableNames = null,
+  /* `onDelete(names)` — async; parent removes the listed presets and
+     refreshes the dropdown. The picker awaits this before clearing
+     its own select-mode state so partial failures stay visible. */
+  onDelete = null,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef(null);
   const inputRef = useRef(null);
   const [activeIdx, setActiveIdx] = useState(0);
+
+  /* Select-to-delete state. Lives inside the picker so its parent
+     doesn't need to think about UI state at all — only the action
+     handler. Reset whenever the popover closes. */
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected,   setSelected]   = useState(() => new Set());
+  const [deleting,   setDeleting]   = useState(false);
+  /* Pending confirm-toast payload — null when no prompt is showing.
+     Replaces the native `window.confirm` for delete confirmations so
+     the prompt matches the rest of the app's toast visual language. */
+  const [confirmReq, setConfirmReq] = useState(null);
+
+  // Only delete is allowed for entries in this set (provided by parent).
+  // Hardcoded presets + the synthetic "Custom" entry don't appear here,
+  // so they're never selectable in delete mode.
+  const isDeletable = (name) =>
+    deletableNames instanceof Set
+      ? deletableNames.has(name)
+      : false;
+  const hasDeletable = deletableNames instanceof Set && deletableNames.size > 0;
 
   // Recently-used preset names — short list (max 5) kept in
   // localStorage so it survives reloads. Only updated when the user
@@ -1403,7 +1595,9 @@ function PresetPicker({
     return allItems.filter((it) => it.name.toLowerCase().includes(q));
   }, [allItems, query]);
 
-  // Outside-click + Escape close.
+  // Outside-click + Escape close. In select mode Esc drops the mode
+  // first (matches the LoadSimulation modal's two-stage cancel),
+  // requiring a second Esc to close the popover itself.
   useEffect(() => {
     if (!open) return undefined;
     setActiveIdx(0);
@@ -1414,7 +1608,13 @@ function PresetPicker({
       }
     };
     const onKey = (e) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      if (selectMode) {
+        setSelectMode(false);
+        setSelected(new Set());
+        return;
+      }
+      setOpen(false);
     };
     window.addEventListener('mousedown', onClick);
     window.addEventListener('keydown', onKey);
@@ -1423,12 +1623,66 @@ function PresetPicker({
       window.removeEventListener('mousedown', onClick);
       window.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, selectMode]);
 
   // Reset highlighted item when filter changes.
   useEffect(() => {
     setActiveIdx(0);
   }, [query]);
+
+  // When the popover closes, drop any pending select-mode state so
+  // the next open starts from a clean slate. The confirm toast is
+  // also dismissed — if the popover is gone there's nothing to act on.
+  useEffect(() => {
+    if (!open) {
+      setSelectMode(false);
+      setSelected(new Set());
+      setConfirmReq(null);
+    }
+  }, [open]);
+
+  /* Select-mode toggles + delete handler. The parent owns the actual
+     API call via `onDelete(names)` — we just collect intent here. */
+  const toggleSelected = (name) => {
+    if (!isDeletable(name)) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  /* Execute the actual delete. Lives separately from the request so
+     the confirm toast can call it after the user commits. */
+  const performDelete = async (names) => {
+    if (!names || names.length === 0 || !onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete(names);
+      setSelected(new Set());
+      setSelectMode(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /* Show the confirm-style ErrorToast. The toast's primary action
+     calls `performDelete`; its Cancel button + × both just dismiss,
+     leaving the picker in select mode with the choices intact. */
+  const handleDeleteSelected = () => {
+    if (selected.size === 0 || !onDelete) return;
+    const names = [...selected];
+    const title = names.length === 1
+      ? `Delete preset “${names[0]}”?`
+      : `Delete ${names.length} presets?`;
+    setConfirmReq({
+      kind: 'confirm',
+      title,
+      details: ['This cannot be undone.'],
+      action: { label: 'Delete', onClick: () => performDelete(names) },
+    });
+  };
 
   const handleSelect = (name) => {
     // Track in recents — skip "Custom" since it isn't really a preset.
@@ -1475,7 +1729,7 @@ function PresetPicker({
       <span className="eyebrow TR-presets-label">Preset</span>
       {hint && <span className="TR-preset-hint mono">{hint}</span>}
       {firstTimeHint && !open && (
-        <span className="TR-preset-firsttime mono">
+        <span className="TR-preset-firsttime">
           <span className="TR-preset-firsttime-arrow" aria-hidden="true">↓</span>
           {firstTimeHint}
         </span>
@@ -1496,83 +1750,190 @@ function PresetPicker({
 
       {open && (
         <div className="TR-preset-popover" role="listbox">
-          <div className="TR-preset-search-wrap">
-            <span className="TR-preset-search-icon" aria-hidden="true">⌕</span>
-            <input
-              ref={inputRef}
-              type="text"
-              className="TR-preset-search mono"
-              placeholder="Search presets…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onSearchKey}
-              spellCheck={false}
-              autoComplete="off"
-            />
-          </div>
+          {selectMode ? (
+            <div className="TR-preset-select-head">
+              <span className="TR-preset-select-title">
+                Select to delete
+              </span>
+              <span className="TR-preset-select-count mono">
+                {selected.size} selected
+              </span>
+            </div>
+          ) : (
+            <div className="TR-preset-search-wrap">
+              <span className="TR-preset-search-icon" aria-hidden="true">⌕</span>
+              <input
+                ref={inputRef}
+                type="text"
+                className="TR-preset-search mono"
+                placeholder="Search presets…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onSearchKey}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              {/* ⋮ button — only meaningful when there's at least one
+                  user-saved preset on disk to delete. Hardcoded
+                  presets ship in code and aren't deletable here. */}
+              {hasDeletable && onDelete && (
+                <button
+                  type="button"
+                  className="TR-preset-menu-btn"
+                  onClick={() => setSelectMode(true)}
+                  aria-label="Select presets to delete"
+                  title="Select presets to delete"
+                >
+                  ⋮
+                </button>
+              )}
+            </div>
+          )}
           <div className="TR-preset-list">
-            {/* Recent picks — surfaced as a small header section above
-                the full list. Only shown when no search query is
-                active AND there are still-valid recents to display. */}
-            {!query.trim() && validRecent.length > 0 && (
-              <>
-                <div className="TR-preset-section-label mono">Recent</div>
-                {validRecent.map((name) => {
-                  const p = presets[name] || {};
-                  const inc = p.desired_inclination;
-                  const orb = p.desired_orbit_height;
-                  const meta =
-                    Number.isFinite(inc) && Number.isFinite(orb)
-                      ? `${inc}° · ${orb} km`
-                      : '';
-                  const active = name === presetName;
+            {selectMode ? (
+              /* Select mode — only deletable presets appear. Hardcoded
+                 + the synthetic "Custom" entry are hidden so the list
+                 only shows things the user can actually act on. */
+              (() => {
+                const deletableItems = filtered.filter(
+                  (it) => isDeletable(it.name)
+                );
+                if (deletableItems.length === 0) {
+                  return (
+                    <div className="TR-preset-empty mono">
+                      No user-saved presets to delete
+                    </div>
+                  );
+                }
+                return deletableItems.map((it) => {
+                  const isOn = selected.has(it.name);
                   return (
                     <button
-                      key={`recent-${name}`}
+                      key={it.name}
                       type="button"
                       role="option"
-                      aria-selected={active}
-                      className={'TR-preset-item' + (active ? ' TR-preset-item--active' : '')}
-                      onClick={() => handleSelect(name)}
-                      title={TIPS.presetItem ? TIPS.presetItem(name) : name}
+                      aria-pressed={isOn}
+                      className={
+                        'TR-preset-item TR-preset-item--select' +
+                        (isOn ? ' TR-preset-item--checked' : '')
+                      }
+                      onClick={() => toggleSelected(it.name)}
+                      disabled={deleting}
                     >
-                      <span className="TR-preset-item-name">{name}</span>
-                      <span className="TR-preset-item-meta mono">{meta}</span>
+                      <span
+                        className={`TR-preset-check${isOn ? ' TR-preset-check--on' : ''}`}
+                        aria-hidden="true"
+                      >
+                        {isOn ? '✓' : ''}
+                      </span>
+                      <span className="TR-preset-item-name">{it.name}</span>
+                      <span className="TR-preset-item-meta mono">{it.meta}</span>
                     </button>
                   );
-                })}
-                <div className="TR-preset-section-label mono">All presets</div>
+                });
+              })()
+            ) : (
+              <>
+                {/* Recent picks — surfaced as a small header section above
+                    the full list. Only shown when no search query is
+                    active AND there are still-valid recents to display. */}
+                {!query.trim() && validRecent.length > 0 && (
+                  <>
+                    <div className="TR-preset-section-label mono">Recent</div>
+                    {validRecent.map((name) => {
+                      const p = presets[name] || {};
+                      const inc = p.desired_inclination;
+                      const orb = p.desired_orbit_height;
+                      const meta =
+                        Number.isFinite(inc) && Number.isFinite(orb)
+                          ? `${inc}° · ${orb} km`
+                          : '';
+                      const active = name === presetName;
+                      return (
+                        <button
+                          key={`recent-${name}`}
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          className={'TR-preset-item' + (active ? ' TR-preset-item--active' : '')}
+                          onClick={() => handleSelect(name)}
+                          title={TIPS.presetItem ? TIPS.presetItem(name) : name}
+                        >
+                          <span className="TR-preset-item-name">{name}</span>
+                          <span className="TR-preset-item-meta mono">{meta}</span>
+                        </button>
+                      );
+                    })}
+                    <div className="TR-preset-section-label mono">All presets</div>
+                  </>
+                )}
+                {filtered.length === 0 ? (
+                  <div className="TR-preset-empty mono">No matches</div>
+                ) : (
+                  filtered.map((it, idx) => {
+                    const active = it.name === presetName;
+                    const highlight = idx === activeIdx;
+                    return (
+                      <button
+                        key={it.name}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        className={
+                          'TR-preset-item' +
+                          (active    ? ' TR-preset-item--active'    : '') +
+                          (highlight ? ' TR-preset-item--highlight' : '')
+                        }
+                        onMouseEnter={() => setActiveIdx(idx)}
+                        onClick={() => handleSelect(it.name)}
+                        title={it.name === 'Custom' ? 'Custom (no preset)' : TIPS.presetItem(it.name)}
+                      >
+                        <span className="TR-preset-item-name">{it.name}</span>
+                        <span className="TR-preset-item-meta mono">{it.meta}</span>
+                      </button>
+                    );
+                  })
+                )}
               </>
             )}
-            {filtered.length === 0 ? (
-              <div className="TR-preset-empty mono">No matches</div>
-            ) : (
-              filtered.map((it, idx) => {
-                const active = it.name === presetName;
-                const highlight = idx === activeIdx;
-                return (
-                  <button
-                    key={it.name}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    className={
-                      'TR-preset-item' +
-                      (active    ? ' TR-preset-item--active'    : '') +
-                      (highlight ? ' TR-preset-item--highlight' : '')
-                    }
-                    onMouseEnter={() => setActiveIdx(idx)}
-                    onClick={() => handleSelect(it.name)}
-                    title={it.name === 'Custom' ? 'Custom (no preset)' : TIPS.presetItem(it.name)}
-                  >
-                    <span className="TR-preset-item-name">{it.name}</span>
-                    <span className="TR-preset-item-meta mono">{it.meta}</span>
-                  </button>
-                );
-              })
-            )}
           </div>
+          {selectMode && (
+            <div className="TR-preset-select-foot">
+              <button
+                type="button"
+                className="TR-preset-select-cancel"
+                onClick={() => { setSelectMode(false); setSelected(new Set()); }}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="TR-preset-select-delete"
+                onClick={handleDeleteSelected}
+                disabled={selected.size === 0 || deleting}
+              >
+                {deleting
+                  ? 'Deleting…'
+                  : `Delete${selected.size > 0 ? ` (${selected.size})` : ''}`}
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Pretty confirm toast — replaces `window.confirm`. Always
+          rose-accented regardless of picker variant, since delete is
+          a destructive action and red conveys that intent more
+          clearly than the debris-amber theme would. The action
+          callback runs the actual delete; dismiss (× or Cancel) just
+          clears the request, leaving the user back in select mode. */}
+      {confirmReq && (
+        <ErrorToast
+          error={confirmReq}
+          onDismiss={() => setConfirmReq(null)}
+          accent="trajectory"
+        />
       )}
     </div>
   );
@@ -1582,6 +1943,9 @@ function DebrisTab({
   params, setParam, mode, setMode, customPoints, setCustomPoints, onClear,
   trajectoryDone = false,
   presetName = 'Custom', onLoadPreset, onSavePreset, presets = {},
+  /* All debris presets are user-saved (no hardcoded ones), so the
+     deletable set is just the presets map's keys. */
+  deletablePresetNames = null, onDeletePresets = null,
 }) {
   const [openKey, setOpenKey] = useState('Failure Points');
   const toggleSection = useCallback((key) => {
@@ -1605,6 +1969,12 @@ function DebrisTab({
         variant="debris"
         recentKey="debris"
         hint="Named by debris/point and interval — e.g. “10d-50s”"
+        deletableNames={
+          deletablePresetNames
+            ? new Set(Object.keys(deletablePresetNames))
+            : new Set(Object.keys(presets))
+        }
+        onDelete={onDeletePresets}
       />
 
       {!trajectoryDone && (
@@ -1764,6 +2134,29 @@ function Section({ title, accent, summary, children, isOpen, onToggle }) {
 /* ═══ Field input ════════════════════════════════════════════ */
 
 function Field({ meta, value, onChange, error }) {
+  // Enum fields render as a styled dropdown — used by the Structure
+  // tab's `propellant_order` and any future categorical input.
+  if (meta.type === 'enum' && Array.isArray(meta.options)) {
+    return (
+      <label
+        className={`TR-field${error ? ' TR-field--error' : ''}`}
+        title={meta.tip || ''}
+      >
+        <span className="TR-field-label">{meta.label}</span>
+        <span className="TR-field-input-wrap">
+          <select
+            className="TR-field-input mono TR-field-input--select"
+            value={value ?? ''}
+            onChange={(e) => onChange(e.target.value)}
+          >
+            {meta.options.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </span>
+      </label>
+    );
+  }
   return (
     <label className={`TR-field${error ? ' TR-field--error' : ''}`} title={meta.tip || ''}>
       <span className="TR-field-label">{meta.label}</span>
@@ -1779,6 +2172,133 @@ function Field({ meta, value, onChange, error }) {
         {meta.unit && <span className="TR-field-unit mono">{meta.unit}</span>}
       </span>
     </label>
+  );
+}
+
+/* ═══ Structure tab — CoM / MoI geometry ═══════════════════════════
+ *   Companion to the Simulation tab. Owns the ~30 structural fields
+ *   that used to live in `rocket_structure.yaml` plus locked-mirror
+ *   read-outs of the five overlap fields (propellant_mass per stage,
+ *   number_of_engines per stage, payload_mass, fairing_mass).
+ *
+ *   Locked mirrors are disabled inputs whose value tracks the
+ *   Simulation tab's state in real time. Clicking the "Set in
+ *   Simulation →" caption jumps the user back over there, since
+ *   those values can only be edited at one place — that's how we
+ *   guarantee MoI and the trajectory math see the same numbers.
+ * ──────────────────────────────────────────────────────────────── */
+
+function StructureTab({
+  params, setStructureParam, onClear, onJumpToSimulation,
+}) {
+  const firstSectionKey = Object.keys(STRUCTURE_PARAMS)[0];
+  const [openKey, setOpenKey] = useState(firstSectionKey);
+  const toggleSection = useCallback((key) => {
+    setOpenKey((cur) => (cur === key ? null : key));
+  }, []);
+
+  const structure = params.structure || {};
+
+  // Read a locked-mirror value via dot-path into the full `params`
+  // tree (e.g. 'Stage1.propellant_mass', 'fairing_mass').
+  const readLocked = useCallback((path) => {
+    const parts = path.split('.');
+    let v = params;
+    for (const p of parts) {
+      if (v == null) return '';
+      v = v[p];
+    }
+    return v ?? '';
+  }, [params]);
+
+  return (
+    <>
+      <div className="TR-scroll">
+        {Object.entries(STRUCTURE_PARAMS).map(([sectionName, fields]) => {
+          const mirrors = LOCKED_MIRRORS[sectionName] || [];
+          // Summary in the accordion header shows how many fields
+          // have a value (almost always "all" since defaults are
+          // pre-populated, but useful if the user deliberately
+          // clears one to fall back to the Python default).
+          const sectionValues = {};
+          for (const k of Object.keys(fields)) sectionValues[k] = structure[k];
+          return (
+            <Section
+              key={sectionName}
+              title={sectionName}
+              summary={summarizeSection(fields, sectionValues)}
+              isOpen={openKey === sectionName}
+              onToggle={() => toggleSection(sectionName)}
+            >
+              {mirrors.length > 0 && (
+                <div className="TR-locked-mirrors">
+                  {mirrors.map((m) => (
+                    <LockedMirror
+                      key={m.from}
+                      label={m.label}
+                      unit={m.unit}
+                      value={readLocked(m.from)}
+                      onJump={onJumpToSimulation}
+                    />
+                  ))}
+                </div>
+              )}
+              {Object.entries(fields).map(([key, meta]) => (
+                <Field
+                  key={key}
+                  meta={meta}
+                  value={structure[key]}
+                  onChange={(v) => setStructureParam(key, v)}
+                />
+              ))}
+            </Section>
+          );
+        })}
+      </div>
+
+      <div className="TR-sidebar-foot TR-sidebar-foot--row">
+        <button
+          type="button"
+          className="TR-btn-clear"
+          onClick={onClear}
+          title="Reset every structure parameter to its default value"
+        >
+          <span className="TR-btn-clear-icon" aria-hidden="true">↺</span>
+          Reset to Defaults
+        </button>
+      </div>
+    </>
+  );
+}
+
+/* A read-only mirror of a value owned by another tab. Renders as a
+ * disabled Field plus a small "Set in Simulation →" caption that
+ * jumps the user back to the source. Used at the top of the Stage,
+ * Fairing, and Payload sections of the Structure tab. */
+function LockedMirror({ label, unit, value, onJump }) {
+  return (
+    <div className="TR-field TR-field--locked" title="Set this in the Simulation tab">
+      <span className="TR-field-label">{label}</span>
+      <span className="TR-field-input-wrap">
+        <input
+          type="text"
+          className="TR-field-input mono"
+          value={value === '' || value == null ? '—' : value}
+          disabled
+          tabIndex={-1}
+          aria-readonly="true"
+        />
+        {unit && <span className="TR-field-unit mono">{unit}</span>}
+      </span>
+      <button
+        type="button"
+        className="TR-locked-mirror-jump"
+        onClick={onJump}
+      >
+        Set in Simulation
+        <span className="TR-locked-mirror-jump-arrow" aria-hidden="true">→</span>
+      </button>
+    </div>
   );
 }
 
@@ -1913,7 +2433,6 @@ function MissionSummary({ params, preset }) {
   const lon = fmt(params.lon_launch, 2);
   const incl = fmt(params.desired_inclination, 1);
   const orbit = fmt(params.desired_orbit_height, 0);
-  const simT = fmt(params.simulation_time, 0);
 
   return (
     <div className="TR-mission">
@@ -2542,6 +3061,83 @@ function validateAndCollect(params) {
       }
       config[stageKey][key] = value;
     }
+  }
+
+  // Structure params (CoM / MoI inputs that used to live in
+  // rocket_structure.yaml). Empty fields silently fall back to the
+  // Python side's STRUCTURE_DEFAULTS — they're decorative defaults,
+  // not hard requirements — so empty isn't an error. Invalid numbers
+  // (NaN) ARE flagged.
+  const structure = params.structure || {};
+  const structureOut = {};
+  for (const [section, fields] of Object.entries(STRUCTURE_PARAMS)) {
+    for (const [key, meta] of Object.entries(fields)) {
+      const raw = structure[key];
+      if (raw === '' || raw === null || raw === undefined) continue;
+      if (meta.type === 'enum') {
+        if (Array.isArray(meta.options) && !meta.options.includes(raw)) {
+          errors.push(`${section} > ${meta.label}: "${raw}" not in ${meta.options.join('/')}`);
+          continue;
+        }
+        structureOut[key] = String(raw);
+        continue;
+      }
+      const value = coerce(raw, meta.type);
+      if (typeof value === 'number' && !Number.isFinite(value)) {
+        errors.push(`${section} > ${meta.label}: invalid number "${raw}"`);
+        continue;
+      }
+      structureOut[key] = value;
+    }
+  }
+
+  // Sanity bounds — the Python side trusts the JSON, so we catch
+  // physically nonsensical values here before they cause divide-by-
+  // zero or negative geometry downstream.
+  const num = (k) => {
+    const v = structureOut[k];
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  };
+  const eir = num('engine_inner_radius_m');
+  const eor = num('engine_outer_radius_m');
+  if (eir !== null && eor !== null && eor <= eir) {
+    errors.push(
+      `Engines (Global) > Engine Outer Radius must be greater than Inner Radius `
+      + `(${eor} ≤ ${eir})`
+    );
+  }
+  const tt = num('tank_thickness_m');
+  if (tt !== null && tt <= 0) {
+    errors.push(`Tanks (Global) > Tank Wall Thickness must be > 0`);
+  }
+  for (const N of [1, 2, 3]) {
+    const of = num(`Stage${N}_of_ratio`);
+    if (of !== null && of <= 0) {
+      errors.push(`Stage ${N} Structure > O/F Ratio must be > 0`);
+    }
+    const fd = num(`Stage${N}_fuel_density`);
+    const od = num(`Stage${N}_ox_density`);
+    if (fd !== null && fd <= 0) errors.push(`Stage ${N} Structure > Fuel Density must be > 0`);
+    if (od !== null && od <= 0) errors.push(`Stage ${N} Structure > Ox Density must be > 0`);
+  }
+
+  // Pivot the flat `Stage{N}_xxx` keys into per-stage sub-objects
+  // matching what `_reshape_json_config` on the Python side expects.
+  // Globals stay flat at the top of the structure block.
+  const structureBlock = {};
+  for (const [k, v] of Object.entries(structureOut)) {
+    const m = k.match(/^Stage(\d)_(.+)$/);
+    if (m) {
+      const [, n, field] = m;
+      const key = `Stage${n}`;
+      if (!structureBlock[key]) structureBlock[key] = {};
+      structureBlock[key][field] = v;
+    } else {
+      structureBlock[k] = v;
+    }
+  }
+  if (Object.keys(structureBlock).length > 0) {
+    config.structure = structureBlock;
   }
 
   // Magic block the desktop GUI also adds before writing _current.json.

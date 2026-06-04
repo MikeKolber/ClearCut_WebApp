@@ -1,7 +1,7 @@
 {
   "payload_length": 1.0,
   "payload_radius": 0.6,
-  "payload_mass": 285.0,
+  "payload_mass": 300.0,
   "fairing_radius": 0.75,
   "fairing_length": 5.0,
   "stage12_interstage_length": 0.6,
@@ -17,10 +17,10 @@
   "stage1_bottom_propellant_mass": 1012.5,
   "stage1_top_propellant_mass": 7087.5,
   "stage2_radius": 0.6,
-  "stage2_length": 4.277891573885948,
+  "stage2_length": 4.32789896228203,
   "stage2_engine_length": 0.8,
   "stage2_bottom_propellant_length": 1.2,
-  "stage2_top_propellant_length": 2.2578915738859484,
+  "stage2_top_propellant_length": 2.3078989622820303,
   "stage2_tank_head_length": 0.6,
   "stage2_bottom_propellant_mass": 414.375,
   "stage2_top_propellant_mass": 2900.625,
@@ -30,6 +30,6 @@
   "stage3_bottom_propellant_length": 1.18,
   "stage3_top_propellant_length": 1.18,
   "stage3_tank_head_length": 0.6,
-  "stage3_bottom_propellant_mass": 143.67,
-  "stage3_top_propellant_mass": 991.33
+  "stage3_bottom_propellant_mass": 143.67088607594937,
+  "stage3_top_propellant_mass": 991.3291139240506
 }

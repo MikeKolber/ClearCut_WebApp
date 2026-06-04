@@ -242,6 +242,72 @@
   transform: translateX(2px);
 }
 
+/* ── Confirm-mode buttons ────────────────────────────────────────
+   Replaces `window.confirm` dialogs across the app. The toast shows
+   a Cancel button (just a styled dismiss) next to a destructive
+   primary that runs the caller's onClick. The Cancel button takes
+   the `margin-left: auto` from the action so the pair docks right. */
+
+.error-toast-cancel {
+  appearance: none;
+  margin-left: auto;
+  height: 28px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+.error-toast-cancel:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* When Cancel is present, the action loses its auto-left and sits
+   immediately to the right of Cancel. */
+.error-toast-foot .error-toast-cancel + .error-toast-action {
+  margin-left: 0;
+}
+
+/* Destructive primary — same hue family as the action variants but
+   filled rather than outlined, so it reads as the committal step in
+   the pair. Used for delete confirms (presets, saved simulations). */
+.error-toast-action--danger {
+  background: rgba(220, 64, 80, 0.16);
+  border-color: rgba(220, 64, 80, 0.7);
+  color: #ffd1d8;
+}
+.error-toast-action--danger:hover {
+  background: rgba(220, 64, 80, 0.28);
+  border-color: rgba(220, 64, 80, 0.95);
+  color: #fff1f2;
+  box-shadow: 0 0 16px rgba(220, 64, 80, 0.32);
+}
+/* Debris confirms re-tint the destructive primary amber. */
+.error-toast-action--danger.error-toast-action--debris {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.7);
+  color: #ffe9b3;
+}
+.error-toast-action--danger.error-toast-action--debris:hover {
+  background: rgba(245, 158, 11, 0.28);
+  border-color: rgba(245, 158, 11, 0.95);
+  color: #fff7e0;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.32);
+}
+
 /* ── Expanded per-field list (validation only, count > 1) ─────── */
 
 .error-toast-list {

@@ -26,6 +26,7 @@ port 5000 (Control Center listens on *:5000). You can override with PORT.
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -850,6 +851,31 @@ def trajectory_save_preset():
     return jsonify({"saved_name": safe})
 
 
+@app.delete("/api/trajectory/presets/<path:name>")
+def trajectory_delete_preset(name: str):
+    """Delete a saved trajectory preset by name (file stem, no `.json`).
+
+    Path-traversal guarded against `_TRAJ_PRESETS_DIR`. Hardcoded
+    presets that live in frontend code (not on disk) yield 404 here —
+    the picker filters those out before offering them for deletion.
+    """
+    n = (name or "").strip()
+    if not n:
+        return jsonify({"error": "name is required"}), 400
+    candidate = (_TRAJ_PRESETS_DIR / f"{n}.json").resolve()
+    try:
+        candidate.relative_to(_TRAJ_PRESETS_DIR.resolve())
+    except ValueError:
+        return jsonify({"error": "Path traversal blocked"}), 403
+    if not candidate.exists() or not candidate.is_file():
+        return jsonify({"error": f"No such preset: {n}"}), 404
+    try:
+        candidate.unlink()
+    except OSError as exc:
+        return jsonify({"error": f"Could not delete: {exc}"}), 500
+    return jsonify({"deleted": n})
+
+
 # ── Debris analysis presets ────────────────────────────────────────
 #
 # Same shape and semantics as the trajectory preset endpoints above,
@@ -919,6 +945,27 @@ def debris_save_preset():
         return jsonify({"error": f"Could not write debris preset: {exc}"}), 500
 
     return jsonify({"saved_name": safe})
+
+
+@app.delete("/api/debris/presets/<path:name>")
+def debris_delete_preset(name: str):
+    """Delete a saved debris preset by name (file stem). Mirrors
+    `trajectory_delete_preset` for the debris preset folder."""
+    n = (name or "").strip()
+    if not n:
+        return jsonify({"error": "name is required"}), 400
+    candidate = (_TRAJ_DEBRIS_PRESETS_DIR / f"{n}.json").resolve()
+    try:
+        candidate.relative_to(_TRAJ_DEBRIS_PRESETS_DIR.resolve())
+    except ValueError:
+        return jsonify({"error": "Path traversal blocked"}), 403
+    if not candidate.exists() or not candidate.is_file():
+        return jsonify({"error": f"No such debris preset: {n}"}), 404
+    try:
+        candidate.unlink()
+    except OSError as exc:
+        return jsonify({"error": f"Could not delete: {exc}"}), 500
+    return jsonify({"deleted": n})
 
 
 # ── Load existing simulation data (mirrors desktop `_load_simulation`) ──
@@ -1063,6 +1110,59 @@ def _prewarm_compare_cache():
 threading.Thread(target=_prewarm_compare_cache, daemon=True).start()
 
 
+def _derive_config_from_df(df):
+    """Best-effort reconstruction of the parameter dict from a sim's
+    output CSV/XLSX. The full original config can't be recovered
+    (orbit target, per-stage burn times, mass fractions, etc.), but
+    a handful of fields are reliably stored in the columnar output
+    and we can lift them straight back into the frontend form so the
+    mission-summary card reflects the just-loaded simulation rather
+    than whatever the user had typed before.
+
+    Returns a dict keyed by trajectory-form param names. Empty dict
+    on parse failure — the frontend treats missing keys as "leave
+    blank in the form".
+    """
+    derived = {}
+    try:
+        if df is None or len(df) == 0:
+            return derived
+        first, last = df.iloc[0], df.iloc[-1]
+
+        def safe_num(value):
+            try:
+                v = float(value)
+            except (TypeError, ValueError):
+                return None
+            return v if math.isfinite(v) else None
+
+        if "time_s" in df.columns:
+            v = safe_num(last.get("time_s"))
+            if v is not None and v > 0:
+                derived["simulation_time"] = round(v, 1)
+        if "lat_deg" in df.columns:
+            v = safe_num(first.get("lat_deg"))
+            if v is not None:
+                derived["lat_launch"] = round(v, 4)
+        if "lon_deg" in df.columns:
+            v = safe_num(first.get("lon_deg"))
+            if v is not None:
+                derived["lon_launch"] = round(v, 4)
+        if "height_m" in df.columns:
+            v = safe_num(first.get("height_m"))
+            if v is not None:
+                derived["height_launch"] = round(v, 1)
+        if "mass_kg" in df.columns:
+            # Mass at end of sim ≈ orbit-insertion mass, which is what
+            # the "Final Payload Mass" field on the form represents.
+            v = safe_num(last.get("mass_kg"))
+            if v is not None and v > 0:
+                derived["final_payload_mass"] = round(v, 1)
+    except Exception:  # noqa: BLE001 — best-effort, never block load
+        return {}
+    return derived
+
+
 @app.post("/api/trajectory/load")
 def trajectory_load_file():
     """Replace `output/simulation_output.csv` with an uploaded CSV/XLSX.
@@ -1123,7 +1223,12 @@ def trajectory_load_file():
     _TRAJ_RAW_CACHE["df"] = None
     threading.Thread(target=_load_full_trajectory_df, daemon=True).start()
 
-    return jsonify({"rows": int(len(df)), "name": name})
+    return jsonify({
+        "rows":    int(len(df)),
+        "name":    name,
+        "derived": _derive_config_from_df(df),
+        "params":  None,  # uploads never carry a sidecar
+    })
 
 
 # ── Save current sim into Pre-loaded Trajectories ──────────────────
@@ -1144,7 +1249,14 @@ def trajectory_save_current():
     Trajectories/<name>.xlsx, where it becomes available to the
     "Load Simulation" picker and the Compare page.
 
-    Body: `{ name: str, overwrite?: bool }`.
+    Body: `{ name: str, overwrite?: bool, params?: dict }`.
+    If `params` is supplied (the frontend's live trajectory-form
+    state), it's written as `<name>.json` alongside the `.xlsx`. The
+    load-saved endpoint reads that sidecar and restores the full
+    form state instead of only the 5 column-derived fields. Old
+    saved XLSXes without a sidecar still load fine — they just fall
+    back to column derivation as before.
+
     Returns: `{ saved_name }` on success.
             409 + `{ exists: true, name }` on conflict without overwrite.
     """
@@ -1195,6 +1307,28 @@ def trajectory_save_current():
         df.to_excel(target, index=False, engine="openpyxl")
     except Exception as exc:                 # noqa: BLE001 — surface to UI
         return jsonify({"error": f"Could not save: {exc}"}), 500
+
+    # Optional JSON sidecar — when the frontend passed its live form
+    # `params`, persist them next to the xlsx so loading later can
+    # restore the full form state. Best-effort: failure to write the
+    # sidecar (permissions, disk, ...) does NOT fail the whole save;
+    # the user still has the xlsx and the load path falls back to
+    # column-derivation when no sidecar exists.
+    params_payload = body.get("params")
+    if isinstance(params_payload, dict) and params_payload:
+        sidecar = _TRAJ_PRELOADED_DIR / f"{safe}.json"
+        try:
+            with open(sidecar, "w") as f:
+                json.dump(params_payload, f, indent=2)
+        except OSError:
+            pass
+    else:
+        # If we're overwriting and the new save has no params, drop
+        # any orphan sidecar so it doesn't lie about the new contents.
+        stale = _TRAJ_PRELOADED_DIR / f"{safe}.json"
+        if stale.exists():
+            try: stale.unlink()
+            except OSError: pass
 
     # Keep the Compare page's two-tier cache honest about the new file.
     # `_load_compare_df` keys on (path, mtime), so the next compare
@@ -1280,7 +1414,89 @@ def trajectory_load_saved():
     _TRAJ_RAW_CACHE["df"] = None
     threading.Thread(target=_load_full_trajectory_df, daemon=True).start()
 
-    return jsonify({"rows": int(len(df)), "name": candidate.name})
+    # Look for the JSON sidecar written by `save-current`. When the
+    # saved sim was created by the same UI session it'll be sitting
+    # next to the XLSX (same stem, `.json` extension), carrying the
+    # full trajectory + stage param dict. We return it verbatim so
+    # the frontend restores the entire form state, not just the 5
+    # column-derivable fields.
+    full_params = None
+    sidecar = candidate.with_suffix(".json")
+    if sidecar.is_file():
+        try:
+            with open(sidecar) as f:
+                data = json.load(f)
+            if isinstance(data, dict) and data:
+                full_params = data
+        except (OSError, json.JSONDecodeError):
+            full_params = None
+
+    return jsonify({
+        "rows":    int(len(df)),
+        "name":    candidate.name,
+        "derived": _derive_config_from_df(df),
+        "params":  full_params,
+    })
+
+
+# ── Delete a saved simulation ──────────────────────────────────────
+#
+# Companion to `/api/trajectory/save-current`. Removes:
+#   - the XLSX itself
+#   - its `.json` config sidecar (if present)
+#   - any compare-cache sidecars for this source (Feather / pickle)
+#   - the in-memory compare-DataFrame cache entry
+#
+# Path-traversal guarded. Failures on the sidecar / cache cleanup
+# never fail the whole request — the XLSX is the source of truth,
+# everything else is best-effort cleanup.
+
+@app.delete("/api/trajectory/saved/<path:filename>")
+def trajectory_delete_saved(filename: str):
+    """Delete a saved simulation from Pre-loaded Trajectories/.
+
+    Body: none. Path param: the XLSX filename (basename, no slashes).
+    Returns: `{ deleted: filename }` on success, 404 if missing,
+             403 if the resolved path escapes the saved-sim folder.
+    """
+    fname = (filename or "").strip()
+    if not fname:
+        return jsonify({"error": "filename is required"}), 400
+
+    candidate = (_TRAJ_PRELOADED_DIR / fname).resolve()
+    try:
+        candidate.relative_to(_TRAJ_PRELOADED_DIR.resolve())
+    except ValueError:
+        return jsonify({"error": "Path traversal blocked"}), 403
+    if not candidate.exists() or not candidate.is_file():
+        return jsonify({"error": f"No such saved simulation: {fname}"}), 404
+
+    # Primary delete — the XLSX itself.
+    try:
+        candidate.unlink()
+    except OSError as exc:
+        return jsonify({"error": f"Could not delete: {exc}"}), 500
+
+    # Drop the matching JSON config sidecar (best-effort).
+    sidecar = candidate.with_suffix(".json")
+    if sidecar.is_file():
+        try: sidecar.unlink()
+        except OSError: pass
+
+    # Drop any compare-cache sidecars + the in-memory entry so the
+    # Compare page doesn't try to read a now-missing source on its
+    # next request.
+    key = str(candidate)
+    _COMPARE_DF_CACHE.pop(key, None)
+    if _COMPARE_CACHE_DIR.exists():
+        prefix = "".join(
+            c if (c.isalnum() or c in "-_.") else "_" for c in candidate.name
+        ) + "__"
+        for old in _COMPARE_CACHE_DIR.glob(f"{prefix}*"):
+            try: old.unlink()
+            except OSError: pass
+
+    return jsonify({"deleted": fname})
 
 
 # ── Rocket structure (3D viewer source data) ────────────────────────

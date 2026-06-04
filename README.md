@@ -5,7 +5,7 @@ design and analysis tools, side-by-side, in one place.
 
 | Module                | What it does                                                           |
 | --------------------- | ---------------------------------------------------------------------- |
-| **Trajectory**        | 6-DOF flight simulation, ground-track maps, debris dispersion, runs comparison. |
+| **Trajectory**        | 3-DOF flight simulation, ground-track maps, debris dispersion, runs comparison. |
 | **PBS**               | Per-stage mass budgeting across every major rocket subsystem.           |
 | **Engine Test**       | TDMS sensor data analysis and test-fire video review.                   |
 

@@ -209,6 +209,81 @@
   box-shadow: inset 0 0 0 1px var(--warning);
 }
 
+/* Structure tab — green-cyan tint so it's visually distinct from the
+   default accent-blue (Trajectory) and warning-amber (Debris). Same
+   shape, different family — signals "different category of input". */
+.TR-tab--structure.TR-tab--active {
+  background: rgba(74, 222, 128, 0.10);
+  color: #86efac;
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.7);
+}
+
+/* ─── Locked-mirror fields (Structure tab) ──────────────────────────
+   Render a value owned by the Simulation tab as a disabled input,
+   tagged with a "Set in Simulation →" link so the user knows where
+   to actually edit it. Visually muted vs. the regular Field so the
+   eye lands on the actionable Structure fields first. */
+
+.TR-locked-mirrors {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  margin: 0 0 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-sm);
+}
+
+.TR-field--locked .TR-field-label {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.TR-field--locked .TR-field-input {
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-dim);
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* The "Set in Simulation →" caption / link under the locked input. */
+.TR-locked-mirror-jump {
+  appearance: none;
+  align-self: flex-end;
+  margin-top: 2px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 140ms ease;
+}
+.TR-locked-mirror-jump:hover {
+  color: var(--accent);
+}
+.TR-locked-mirror-jump-arrow {
+  font-size: 11px;
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.TR-locked-mirror-jump:hover .TR-locked-mirror-jump-arrow {
+  transform: translateX(3px);
+}
+
+/* Enum field uses the same Field shell as text inputs — restore the
+   native dropdown chevron and snap the caret padding so the select
+   doesn't look like a styled <input> by accident. */
+.TR-field-input--select {
+  appearance: auto;
+  padding-right: 8px;
+}
+
 /* ─── Preset picker (trigger + popover) ─────────────────────── */
 
 .TR-preset-picker {
@@ -235,29 +310,36 @@
 /* First-time onboarding hint pointing at the preset picker. Shown
    only when the form is fully empty AND the picker is closed —
    disappears the moment the user opens the picker or types anything.
-   Gentle accent pulse draws the eye without being a hard alert. */
+   Gentle accent pulse draws the eye without being a hard alert.
+   Lives in the normal flow (not absolute) so it takes up its own
+   row and pushes the divider + first section below it, rather than
+   floating over them. */
 .TR-preset-firsttime {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 14px;
-  right: 14px;
-  z-index: 10;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-  background: rgba(77, 168, 218, 0.08);
-  border: 1px solid rgba(77, 168, 218, 0.32);
-  border-radius: var(--radius-sm);
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  /* Sans-serif Inter Tight reads as guidance / friendly copy, not
+     terminal output. Slightly tighter tracking + a soft accent
+     colour keeps it inviting without competing with the trigger
+     button below. */
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  line-height: 1.35;
+  color: var(--accent-bright);
+  background: rgba(77, 168, 218, 0.07);
+  border: 1px solid rgba(77, 168, 218, 0.28);
+  border-radius: var(--radius-md);
   pointer-events: none;
   animation: TR-preset-firsttime-pulse 2.6s ease-in-out infinite;
 }
 
 .TR-preset-firsttime-arrow {
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--accent-bright);
   animation: TR-preset-firsttime-arrow 1.8s ease-in-out infinite;
 }
@@ -276,16 +358,21 @@
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  height: 32px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 12px;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12px;
+  /* Sans-serif Inter Tight for the preset name — reads as a label,
+     not a code identifier. The count pill below overrides back to
+     mono so digits stay tabular. */
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease;
 }
@@ -311,8 +398,13 @@
 
 .TR-preset-trigger-count {
   flex-shrink: 0;
-  padding: 1px 6px;
+  padding: 1px 7px;
+  /* Force monospace + tabular numerals on the count pill so digits
+     line up. The parent trigger is now sans, so we override here. */
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1;
   font-size: 9px;
+  font-weight: 500;
   letter-spacing: var(--tracking-wide);
   color: var(--text-dim);
   background: var(--bg);
@@ -385,6 +477,164 @@
 }
 
 .TR-preset-search:focus { border-color: var(--accent); }
+
+/* ── Preset picker · select-to-delete mode ────────────────────────────
+   Mirrors the LoadSimulationModal pattern: the ⋮ button enters select
+   mode, the popover header swaps to a count + the rows become a tap
+   target for toggling selection, and a footer with Cancel/Delete is
+   appended below the list. */
+
+/* ⋮ menu button on the right side of the search bar. Hidden when
+   there are no user-saved presets to manage. */
+.TR-preset-menu-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+.TR-preset-menu-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+.TR-preset-menu-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+/* Reserve room on the right so the ⋮ button doesn't overlap text. */
+.TR-preset-search-wrap:has(.TR-preset-menu-btn) .TR-preset-search {
+  padding-right: 32px;
+}
+
+/* Select-mode header — replaces the search bar to make it obvious
+   that the click target on each row changed meaning. */
+.TR-preset-select-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card-2);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.TR-preset-select-count {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Row styling in select mode — left-aligned checkbox glyph, no
+   accent border (the checkmark conveys selection state on its own). */
+.TR-preset-item--select {
+  justify-content: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.TR-preset-item--select .TR-preset-item-name { flex: 1; }
+.TR-preset-item--checked {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+.TR-preset-check {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--bg-card);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.TR-preset-check--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-card);
+}
+
+/* Footer with Cancel + Delete. Cancel is the muted button, Delete is
+   warning-themed so users register the destructive intent. */
+.TR-preset-select-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card-2);
+}
+.TR-preset-select-cancel,
+.TR-preset-select-delete {
+  appearance: none;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    transform 80ms ease;
+}
+.TR-preset-select-cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.TR-preset-select-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.TR-preset-select-delete {
+  background: rgba(244, 63, 94, 0.12);
+  border: 1px solid rgba(244, 63, 94, 0.55);
+  color: #fda4af;
+}
+.TR-preset-select-delete:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.22);
+  color: #ffe4e6;
+  transform: translateY(-1px);
+}
+.TR-preset-select-delete:disabled,
+.TR-preset-select-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .TR-preset-list {
   max-height: 240px;
@@ -955,7 +1205,13 @@
   min-height: 460px;
   max-height: calc(100vh - 88px);
   overflow-y: auto;
-  padding: 18px 26px 14px;     /* tightened from 26/24 to keep the
+  /* Top padding scales with viewport height so the hero sits in the
+     upper-middle of the panel on tall screens, without drifting all
+     the way to dead-centre. Cap kept tight (80 px) so the success
+     state — which adds a "Results" block + debris cards + footer
+     buttons below the hero — has enough room without overflow.
+     Floors at 18 px so a laptop keeps the original spacing. */
+  padding: clamp(18px, 7vh, 80px) 26px 14px;     /* tightened from 26/24 to keep the
                                   debris stack inside the viewport */
   transition: padding 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1010,7 +1266,7 @@
 }
 
 .TR-subtitle {
-  margin: 6px 0 18px;
+  margin: 6px 0 12px;
   font-size: 11px;
   letter-spacing: var(--tracking-mid);
   color: var(--text-dim);
@@ -1600,8 +1856,10 @@
   margin: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;          /* tightened from 14 — debris cards stack here */
-  padding: 4px 0;     /* tightened from 16 0 */
+  gap: 8px;           /* tightened from 10 — stacking debris below
+                         trajectory cards was bumping content into
+                         the bottom edge of the content panel. */
+  padding: 2px 0;     /* tightened from 4 */
   animation: TR-results-in 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1819,56 +2077,65 @@
    defaults are static (no idle motion) so the row reads calmly
    until the user reaches for it. */
 
-/* PlotPreview — the curve "writes itself in" left-to-right by
-   tweening stroke-dashoffset. ~200 covers the path length with room
-   to spare for varying viewport widths. */
+/* ─── Hover-only preview animations ────────────────────────────
+   The four preview SVGs sit fully drawn at rest. Hovering a single
+   card triggers a short, one-shot animation on JUST that card's
+   preview — a quick draw-in for the line previews, a fast cascade
+   for the spreadsheet, and a brisk twinkle for the debris dots.
+   Adjacent cards stay static, so the hovered card visually pops
+   from the rest of the row. */
+
+/* PlotPreview — base = curve fully drawn. Hovering re-draws it
+   left-to-right with stroke-dashoffset. */
 .TR-card-preview-stroke {
   stroke-dasharray: 200;
   stroke-dashoffset: 0;
-  transition: stroke-dashoffset 700ms cubic-bezier(0.65, 0, 0.35, 1);
 }
 .TR-result-card:hover .TR-card-preview-stroke {
-  animation: TR-prev-plot-draw 900ms cubic-bezier(0.65, 0, 0.35, 1);
+  animation: TR-prev-plot-draw 700ms cubic-bezier(0.65, 0, 0.35, 1);
 }
 @keyframes TR-prev-plot-draw {
   0%   { stroke-dashoffset: 200; }
   100% { stroke-dashoffset: 0;   }
 }
 
-/* KmlPreview — the trajectory arc draws on the same way. */
+/* KmlPreview — same draw-in on hover, matched duration so the two
+   line previews behave identically when pointed at. */
 .TR-card-preview-kml-arc {
   stroke-dasharray: 200;
   stroke-dashoffset: 0;
 }
 .TR-result-card:hover .TR-card-preview-kml-arc {
-  animation: TR-prev-plot-draw 950ms cubic-bezier(0.65, 0, 0.35, 1);
+  animation: TR-prev-plot-draw 750ms cubic-bezier(0.65, 0, 0.35, 1);
 }
 
-/* ExcelPreview — rows "stream in" one cell at a time. Each cell's
-   inline `animation-delay` is set in JS so the cascade reads
-   top-to-bottom, left-to-right like a real data fill. */
+/* ExcelPreview — base = all cells fully visible. Hovering replays
+   the cascade fade-in (top-to-bottom, left-to-right) using the
+   per-cell `animation-delay` set inline by JS. */
 .TR-card-preview-excel-cell {
   opacity: 1;
 }
 .TR-result-card:hover .TR-card-preview-excel-cell {
-  animation: TR-prev-excel-fill 600ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: TR-prev-excel-fill 550ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 @keyframes TR-prev-excel-fill {
-  0%   { opacity: 0;   transform: translateY(-2px); }
-  100% { opacity: 1;   transform: translateY(0);    }
+  0%   { opacity: 0; transform: translateY(-2px); }
+  100% { opacity: 1; transform: translateY(0);    }
 }
 
-/* DebrisPreview — dots twinkle with per-dot stagger. */
+/* DebrisPreview — base = dots at rest size/brightness. Hover bursts
+   each dot once with the JS-set stagger so they pop sequentially. */
 .TR-card-preview-debris-dot {
-  /* no idle animation */
+  transform-box: fill-box;
+  transform-origin: center;
 }
 .TR-result-card:hover .TR-card-preview-debris-dot {
-  animation: TR-prev-debris-twinkle 900ms ease-in-out both;
+  animation: TR-prev-debris-twinkle 700ms ease-in-out;
 }
 @keyframes TR-prev-debris-twinkle {
-  0%   { transform: scale(1); }
+  0%   { transform: scale(1);   filter: brightness(1);   }
   40%  { transform: scale(1.5); filter: brightness(1.7); }
-  100% { transform: scale(1); filter: brightness(1); }
+  100% { transform: scale(1);   filter: brightness(1);   }
 }
 
 .TR-card-preview {

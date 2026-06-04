@@ -193,7 +193,7 @@ dt_orbital = 0.1
 
 dt_settings = "thrust_only"  # Other option: "until_orbital"
 
-static_data_for_moment_of_inertia = StaticMomentOfInertia()
+static_data_for_moment_of_inertia = StaticMomentOfInertia(json_file_path)
 dynamic_moi_calculator = DynamicMomentOfInertia(static_data_for_moment_of_inertia)
 
 simulation_time = config["simulation_time"]

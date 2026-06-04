@@ -22,12 +22,20 @@ import './ErrorToast.css';
  *
  *   Props
  *     error    — accepts either a string or
- *                `{ kind, title, details, action? }` where:
+ *                `{ kind, title, details, action?, cancel? }` where:
  *                  kind:     'validation' | 'runtime' | 'success'
+ *                            | 'confirm'
  *                  title:    headline string
  *                  details:  string[] — single message for runtime,
- *                            per-field list for validation
- *                  action:   optional `{ label, onClick }` CTA button
+ *                            per-field list for validation, body copy
+ *                            for confirm (typically the consequence,
+ *                            e.g. "This cannot be undone")
+ *                  action:   optional `{ label, onClick }` CTA button.
+ *                            In `confirm` mode this is the destructive
+ *                            primary action (rendered rose).
+ *                  cancel:   `confirm` only — optional override label
+ *                            for the secondary button (defaults to
+ *                            "Cancel"). The button dismisses the toast.
  *     onDismiss — called after the slide-out animation finishes.
  *     accent    — 'trajectory' (rose) | 'debris' (amber) | 'success'
  *                 (cyan-green). Drives the border + shadow + bullet
@@ -35,6 +43,7 @@ import './ErrorToast.css';
  *                 we override accent to 'success' automatically.
  *     autoDismissMs — optional auto-dismiss delay. Default null
  *                 (no auto-dismiss). Set ~3000 for success toasts.
+ *                 `confirm` toasts ignore this — they wait for input.
  */
 
 export const TOAST_OUT_MS = 240;
@@ -64,7 +73,12 @@ function ErrorToast({ error, onDismiss, accent = 'trajectory', autoDismissMs = n
   // Optional auto-dismiss timer (used by success toasts so users
   // don't have to manually close every confirmation). Resets every
   // time a fresh `error` arrives, and is cleared on unmount.
+  // Confirm toasts skip auto-dismiss since they need a user decision.
   useEffect(() => {
+    const norm0 = typeof error === 'string'
+      ? { kind: 'runtime' }
+      : (error || {});
+    if (norm0.kind === 'confirm') return undefined;
     if (!autoDismissMs || leaving) return undefined;
     const t = setTimeout(() => setLeaving(true), autoDismissMs);
     return () => clearTimeout(t);
@@ -84,10 +98,15 @@ function ErrorToast({ error, onDismiss, accent = 'trajectory', autoDismissMs = n
   const count = details.length;
   const isValidation = norm.kind === 'validation';
   const isSuccess    = norm.kind === 'success';
+  const isConfirm    = norm.kind === 'confirm';
   // `kind: 'success'` always overrides the caller's accent — a green
   // checkmark with a debris-amber border would be visually confusing.
   const effectiveAccent = isSuccess ? 'success' : accent;
   const action = norm.action || null;
+  // Confirm-mode cancel button label (defaults to "Cancel"). The
+  // button itself just dismisses the toast — there's no onClick the
+  // caller needs to supply, since dismissing means "user said no".
+  const cancelLabel = (isConfirm && norm.cancel?.label) || 'Cancel';
 
   const handleAction = () => {
     // Slide out first so the user sees the dismiss animation, then
@@ -132,7 +151,7 @@ function ErrorToast({ error, onDismiss, accent = 'trajectory', autoDismissMs = n
         </button>
       </div>
 
-      {(action || (isValidation && count > 1)) && (
+      {(action || (isValidation && count > 1) || isConfirm) && (
         <div className="error-toast-foot">
           {isValidation && count > 1 && (
             <button
@@ -145,14 +164,31 @@ function ErrorToast({ error, onDismiss, accent = 'trajectory', autoDismissMs = n
               {expanded ? 'Hide list' : `Show all (${count})`}
             </button>
           )}
+          {/* Confirm mode renders Cancel + destructive primary side by
+              side. The Cancel button is just a styled dismiss — same
+              effect as the × in the corner. */}
+          {isConfirm && (
+            <button
+              type="button"
+              className="error-toast-cancel"
+              onClick={handleClose}
+            >
+              {cancelLabel}
+            </button>
+          )}
           {action && (
             <button
               type="button"
-              className={`error-toast-action error-toast-action--${effectiveAccent}`}
+              className={
+                `error-toast-action error-toast-action--${effectiveAccent}` +
+                (isConfirm ? ' error-toast-action--danger' : '')
+              }
               onClick={handleAction}
             >
               {action.label}
-              <span className="error-toast-action-arrow" aria-hidden="true">→</span>
+              {!isConfirm && (
+                <span className="error-toast-action-arrow" aria-hidden="true">→</span>
+              )}
             </button>
           )}
         </div>

@@ -1,4 +1,4 @@
-import yaml
+import json
 from pathlib import Path
 import numpy as np
 import math
@@ -20,6 +20,212 @@ from .moment_of_inertia_functions import calculate_current_fuel_and_ox_masses_an
 from .moment_of_inertia_functions import calculate_hemisphere_moment_of_inertia
 from .moment_of_inertia_functions import calculate_stage3_propellant_moment_of_inertia
 from .moment_of_inertia_functions import calculate_fuel_cylinder_length
+
+
+# ════════════════════════════════════════════════════════════════════════
+#                       STRUCTURAL DEFAULTS
+# ════════════════════════════════════════════════════════════════════════
+#
+# These values were the YAML's contents. They live in code so the simulator
+# stays runnable even when `_current.json` arrives without a `structure`
+# block (e.g. an old preset, a programmatic test, or a hand-written file).
+# Anything the user types in the frontend's Structure tab overrides the
+# value with the same key below; missing keys silently fall back here.
+#
+# Per-stage values that vary in the original YAML (engine_mass, of_ratio
+# for Stage 3) are split into per-stage entries so each can change without
+# affecting the others.
+# ════════════════════════════════════════════════════════════════════════
+
+STRUCTURE_DEFAULTS = {
+    # ── Globals (single value, applies to all stages) ────────────────
+    'engine_inner_radius_m':     0.18,
+    'engine_outer_radius_m':     0.2,
+    'default_engine_length_m':   0.5,
+    'fuel_tank_mass_ratio':      0.12,
+    'oxidizer_tank_mass_ratio':  0.12,
+    'fuel_tank_head_mass':       30,
+    'tank_thickness_m':          0.01,
+
+    # ── Interstages ──────────────────────────────────────────────────
+    'stage12_interstage_mass_kg':   25,
+    'stage12_interstage_length_m':  0.6,
+    'stage23_interstage_mass_kg':   25,
+    'stage23_interstage_length_m':  0.6,
+
+    # ── Fairing geometry (mass comes from form's `fairing_mass`) ────
+    'fairing_radius_m':  0.75,
+    'fairing_length_m':  5,
+
+    # ── Payload geometry (mass comes from form's `final_payload_mass`)
+    'payload_radius_m':  0.6,
+    'payload_length_m':  1,
+
+    # ── Per-stage geometry / composition (mass + engine count come
+    #     from the form's `Stage{N}` block, kept here only for layout) ─
+    'Stage1': {
+        'propellant_order':     'fuel_first',
+        'of_ratio':             7,
+        'fuel_density':         800,
+        'ox_density':           1400,
+        'stage_max_diameter_m': 1.2,
+        'tank_head_length_m':   0.6,
+        'engine_mass_kg':       135,
+        'engine_length_m':      0.8,
+    },
+    'Stage2': {
+        'propellant_order':     'fuel_first',
+        'of_ratio':             7,
+        'fuel_density':         800,
+        'ox_density':           1400,
+        'stage_max_diameter_m': 1.2,
+        'tank_head_length_m':   0.6,
+        'engine_mass_kg':       135,
+        'engine_length_m':      0.8,
+    },
+    'Stage3': {
+        'propellant_order':     'fuel_first',
+        'of_ratio':             6.9,
+        'fuel_density':         800,
+        'ox_density':           1400,
+        'stage_max_diameter_m': 1.2,
+        'tank_head_length_m':   0.6,
+        'engine_mass_kg':       60,     # smaller upper-stage engine
+        'engine_length_m':      0.8,
+    },
+}
+
+
+def _reshape_json_config(config):
+    """Convert the simulator's flat `_current.json` into the dict shape
+    `_extract_parameters()` and `_calculate_stage_properties()` already
+    expect (the same shape `rocket_structure.yaml` used to provide).
+
+    Resolution order for every leaf value:
+        1. The flat JSON's structural fields (`config['structure'][…]`),
+        2. Top-level overlap fields (`fairing_mass`, `final_payload_mass`)
+           and per-stage form fields (`config['Stage{N}']['propellant_mass'/
+           'number_of_engines']`),
+        3. Hardcoded `STRUCTURE_DEFAULTS` (former YAML values).
+
+    Fuel/Ox masses and Ox.Volume are derived from `propellant_mass`,
+    `of_ratio`, and the densities — eliminating the YAML's silent
+    Stage-2 inconsistency (stored `Ox.Volume = 2.0171875` vs.
+    derived `2.0718`, a 2.7% drift left behind by a manual edit).
+    """
+
+    s = config.get('structure', {}) or {}
+
+    def g(key, default_key=None):
+        """Pull a global field from the JSON's `structure` block, fall
+        back to the matching default if missing or empty."""
+        if key in s and s[key] not in (None, ''):
+            return s[key]
+        return STRUCTURE_DEFAULTS[default_key or key]
+
+    def gs(stage_n, key):
+        """Same idea, scoped to a stage's structure block."""
+        stage_struct = (s.get(f'Stage{stage_n}', {}) or {})
+        if key in stage_struct and stage_struct[key] not in (None, ''):
+            return stage_struct[key]
+        return STRUCTURE_DEFAULTS[f'Stage{stage_n}'][key]
+
+    # Top-level overlap fields — the form's single source of truth for
+    # quantities that used to be duplicated between YAML and JSON.
+    payload_mass = config.get('final_payload_mass', 285)
+    fairing_mass = config.get('fairing_mass',       150)
+
+    data = {
+        'tank_parameters': {
+            'fuel_tank_mass_ratio':     g('fuel_tank_mass_ratio'),
+            'oxidizer_tank_mass_ratio': g('oxidizer_tank_mass_ratio'),
+            'fuel_tank_head_mass':      g('fuel_tank_head_mass'),
+            'oxidizer_tank_head_mass':  g('fuel_tank_head_mass'),  # MoI code
+                                                                    # never reads
+                                                                    # this; kept
+                                                                    # for shape
+            'tank_thickness_m':         g('tank_thickness_m'),
+        },
+        'interstage_parameters': {
+            'stage12_interstage': {
+                'mass_kg':  g('stage12_interstage_mass_kg'),
+                'length_m': g('stage12_interstage_length_m'),
+            },
+            'stage23_interstage': {
+                'mass_kg':  g('stage23_interstage_mass_kg'),
+                'length_m': g('stage23_interstage_length_m'),
+            },
+        },
+        'fairing_parameters': {
+            'mass_kg':  fairing_mass,
+            'radius_m': g('fairing_radius_m'),
+            'length_m': g('fairing_length_m'),
+        },
+        'payload_parameters': {
+            'mass_kg':  payload_mass,
+            'radius_m': g('payload_radius_m'),
+            'length_m': g('payload_length_m'),
+        },
+        'engine_parameters': {
+            'engine_inner_radius_m':      g('engine_inner_radius_m'),
+            'engine_outer_radius_m':      g('engine_outer_radius_m'),
+            'stage1_engine_mass_kg':      gs(1, 'engine_mass_kg'),
+            'stage1_engine_length_m3':    gs(1, 'engine_length_m'),
+            'stage2_engine_mass_kg':      gs(2, 'engine_mass_kg'),
+            'stage2_engine_length_m3':    gs(2, 'engine_length_m'),
+            'stage3_engine_mass_kg':      gs(3, 'engine_mass_kg'),
+            'stage3_engine_length_m3':    gs(3, 'engine_length_m'),
+        },
+        'number_of_engines': {
+            f'stage{N}_number_of_engines':
+                (config.get(f'Stage{N}', {}) or {}).get('number_of_engines', 1)
+            for N in (1, 2, 3)
+        },
+        'error_handling': {
+            'default_engine_length_m': g('default_engine_length_m'),
+        },
+    }
+
+    # Per-stage blocks in the YAML's exact shape — `_calculate_stage_
+    # properties()` accesses these via bracket lookup so the key names
+    # have to match what the YAML used.
+    for N in (1, 2, 3):
+        st_form    = config.get(f'Stage{N}', {}) or {}
+        prop_mass  = st_form.get('propellant_mass', 0)
+        of_ratio   = gs(N, 'of_ratio')
+        fuel_den   = gs(N, 'fuel_density')
+        ox_den     = gs(N, 'ox_density')
+
+        # Derive fuel/ox masses + ox volume from the form-supplied
+        # propellant mass and the structure-supplied O/F ratio so the
+        # three quantities stay mutually consistent. MoI's downstream
+        # code reads them under the YAML's bracketed-key spellings.
+        fuel_mass = prop_mass / (1 + of_ratio) if of_ratio > -1 else 0
+        ox_mass   = prop_mass * of_ratio / (1 + of_ratio) if of_ratio > -1 else 0
+        ox_volume = ox_mass / ox_den if ox_den else 0
+
+        stage_dict = {
+            'propellant_order':           gs(N, 'propellant_order'),
+            'Total Propellant Mass [kg]': prop_mass,
+            'Stage Max Diameter [m]':     gs(N, 'stage_max_diameter_m'),
+            'Ox. Density [kg/m^3]':       ox_den,
+            'Fuel. Density [kg/m^3]':     fuel_den,
+            'Fuel. Mass [kg]':            fuel_mass,
+            'Ox. Mass [kg]':              ox_mass,
+            'Ox. Volume [m^3]':           ox_volume,
+            'Tank Head length [m]':       gs(N, 'tank_head_length_m'),
+        }
+        # Stage-1 uses a different O/F key in the legacy YAML — keep the
+        # spelling so the downstream consumer (`_calculate_stage_
+        # properties`) finds whichever name it expects.
+        if N == 1:
+            stage_dict['Propellants O/F ratio'] = of_ratio
+        else:
+            stage_dict['O/F Ratio'] = of_ratio
+
+        data[f'Stage {N}'] = stage_dict
+
+    return data
 
 
 class StaticMomentOfInertia:
@@ -103,17 +309,30 @@ class StaticMomentOfInertia:
         }
     }
     
-    def __init__(self):
+    def __init__(self, config_path=None):
         """
         Initialize and calculate all static moment of inertia data.
-        
+
+        Parameters
+        ----------
+        config_path : str | Path | None
+            Path to the simulator's `_current.json` (the full form
+            payload). The structure is built from the form's
+            `structure` block, the form's overlap fields, and the
+            hardcoded ``STRUCTURE_DEFAULTS`` at the top of this module
+            for any field the user didn't override.
+
+            If ``None``, builds the structure from defaults only —
+            useful for standalone tests or sketch generators that
+            don't have a full config on hand.
+
         The initialization follows a specific sequence where each step
         depends on the previous ones. The flow is:
         Configuration → Geometry → Mass Properties → MOI → Reference Frames
         """
-        
+
         # ========== STEP 1: LOAD CONFIGURATION ==========
-        self._load_yaml_data()
+        self._load_config(config_path)
         self._extract_parameters()
         
         # ========== STEP 2: CALCULATE GEOMETRY ==========
@@ -142,12 +361,23 @@ class StaticMomentOfInertia:
     # SECTION 1: DATA LOADING AND PARAMETER EXTRACTION
     # ================================================================
         
-    def _load_yaml_data(self):
-        """Load rocket structure data from YAML file"""
-        yaml_path = Path(__file__).parent.parent.parent / '../json_files/rocket_structure/rocket_structure.yaml'
-        with open(yaml_path, 'r') as f:
-            self.data = yaml.safe_load(f)
+    def _load_config(self, config_path):
+        """Load rocket structure data from the simulator's JSON config.
 
+        Reshapes the form's flat config into the dict shape the rest
+        of this class consumes (the same shape `rocket_structure.yaml`
+        used to provide). Missing fields backfill from
+        ``STRUCTURE_DEFAULTS``, so a config without a `structure`
+        block — e.g. an old preset, or `config_path=None` — still
+        produces a working MoI tensor.
+        """
+        if config_path is None:
+            raw_config = {}
+        else:
+            with open(config_path, 'r') as f:
+                raw_config = json.load(f)
+
+        self.data = _reshape_json_config(raw_config)
         self.stage1 = self.data['Stage 1']
         self.stage2 = self.data['Stage 2']
         self.stage3 = self.data['Stage 3']

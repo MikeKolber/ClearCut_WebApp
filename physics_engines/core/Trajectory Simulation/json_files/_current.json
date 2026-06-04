@@ -1,5 +1,5 @@
 {
-  "simulation_time": 50,
+  "simulation_time": 1000,
   "lat_launch": 30.5,
   "lon_launch": 34.8,
   "height_launch": 9500,
@@ -58,6 +58,53 @@
     "area_ratio": 60,
     "efficiency": 0.97,
     "unburned_propellant_fraction": 0.0117
+  },
+  "structure": {
+    "Stage1": {
+      "propellant_order": "fuel_first",
+      "of_ratio": 7,
+      "fuel_density": 800,
+      "ox_density": 1400,
+      "stage_max_diameter_m": 1.2,
+      "tank_head_length_m": 0.6,
+      "engine_mass_kg": 135,
+      "engine_length_m": 0.8
+    },
+    "Stage2": {
+      "propellant_order": "fuel_first",
+      "of_ratio": 7,
+      "fuel_density": 800,
+      "ox_density": 1400,
+      "stage_max_diameter_m": 1.2,
+      "tank_head_length_m": 0.6,
+      "engine_mass_kg": 135,
+      "engine_length_m": 0.8
+    },
+    "Stage3": {
+      "propellant_order": "fuel_first",
+      "of_ratio": 6.9,
+      "fuel_density": 800,
+      "ox_density": 1400,
+      "stage_max_diameter_m": 1.2,
+      "tank_head_length_m": 0.6,
+      "engine_mass_kg": 60,
+      "engine_length_m": 0.8
+    },
+    "engine_inner_radius_m": 0.18,
+    "engine_outer_radius_m": 0.2,
+    "default_engine_length_m": 0.5,
+    "fuel_tank_mass_ratio": 0.12,
+    "oxidizer_tank_mass_ratio": 0.12,
+    "fuel_tank_head_mass": 30,
+    "tank_thickness_m": 0.01,
+    "stage12_interstage_mass_kg": 25,
+    "stage12_interstage_length_m": 0.6,
+    "stage23_interstage_mass_kg": 25,
+    "stage23_interstage_length_m": 0.6,
+    "fairing_radius_m": 0.75,
+    "fairing_length_m": 5,
+    "payload_radius_m": 0.6,
+    "payload_length_m": 1
   },
   "fairing_release_conditions": {
     "min_altitude": 120000

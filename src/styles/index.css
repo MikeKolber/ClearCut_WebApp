@@ -125,4 +125,28 @@ button {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Result-card preview animations are intentionally exempt when
+     the user is hovering — that hover-triggered draw/cascade/twinkle
+     IS the affordance signaling what each card opens. We override
+     the universal !important above with a more-specific selector
+     plus explicit durations so the hover one-shot still plays even
+     if `prefers-reduced-motion` is on. The previews sit fully drawn
+     at rest, so users who never hover see no motion at all. */
+  .TR-result-card:hover .TR-card-preview-stroke {
+    animation-duration: 700ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .TR-result-card:hover .TR-card-preview-kml-arc {
+    animation-duration: 750ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .TR-result-card:hover .TR-card-preview-excel-cell {
+    animation-duration: 550ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .TR-result-card:hover .TR-card-preview-debris-dot {
+    animation-duration: 700ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

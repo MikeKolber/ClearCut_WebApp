@@ -194,3 +194,136 @@
   font-size: 11px;
   color: var(--text-dim, #7a8593);
 }
+
+/* ═══ Select-to-delete mode ═══════════════════════════════════════
+   Subtle additions for the multi-select / delete flow in the Load
+   Simulation modal. ⋮ button to enter the mode lives in the header;
+   inside, rows show a check column and the modal's bottom row
+   reveals Delete / Cancel buttons. */
+
+/* Header actions wrap (⋮ + ✕) */
+.LSM-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The "⋮" menu button — sits just left of the modal's close button.
+   Same height as `.DFM-close` so the two read as a paired control. */
+.LSM-menu-btn {
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.LSM-menu-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+/* Sub-line under the title showing "N of M selected". */
+.LSM-select-sub {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+/* Rows in select mode — replace the rightward arrow with a check
+   column and lose the hover-load affordance. */
+.LDM-row--select {
+  cursor: pointer;
+}
+.LDM-row--selected {
+  background: rgba(77, 168, 218, 0.10);
+  border-color: rgba(77, 168, 218, 0.45);
+  color: var(--text);
+}
+
+.LSM-check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.LSM-check--on {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Footer action row shown only in select mode. Sits at the bottom
+   of the body, takes the place of the divider + browse button. */
+.LSM-select-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 16px 18px 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.LSM-select-cancel,
+.LSM-select-delete {
+  appearance: none;
+  height: 32px;
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.LSM-select-cancel {
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.LSM-select-cancel:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.LSM-select-delete {
+  color: #ff8a96;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.LSM-select-delete:hover:not(:disabled) {
+  color: #ffb3c0;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.75);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.22);
+}
+.LSM-select-delete:disabled,
+.LSM-select-cancel:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

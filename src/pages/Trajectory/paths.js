@@ -49,8 +49,8 @@ export const PATHS = {
 export const TIPS = {
   /* ── mission actions (header strip) ─────────────────────── */
   loadSimulation:
-    'Loads a CSV / XLSX from your computer\n' +
-    'Source: a file you pick from your disk',
+    'Loads a saved simulation (or browse one from disk)\n' +
+    `Source: ${PATHS.preloadedDir}`,
 
   loadDebris:
     'Loads an existing debris run\n' +

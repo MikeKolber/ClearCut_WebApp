@@ -164,6 +164,206 @@ export const STAGE_PARAMS_PER_STAGE = {
   },
 };
 
+/**
+ * ─── Structure tab ─────────────────────────────────────────────────
+ *
+ * Geometric and structural parameters that drive the Center-of-Mass /
+ * Moment-of-Inertia subsystem (`StaticMomentOfInertia` in the Python
+ * engine). These used to live in `rocket_structure.yaml`; migrating
+ * them into the form gives the user a single source of truth for
+ * every quantity the simulation reads.
+ *
+ * Five fields appear here as *locked mirrors* of fields the user
+ * already edits in the Simulation tab (per-stage `propellant_mass`,
+ * per-stage `number_of_engines`, `final_payload_mass`, `fairing_mass`).
+ * Those mirrors render as disabled inputs that pull the live value
+ * from the Simulation state — the rendering layer in `Trajectory.js`
+ * picks them up by key from `LOCKED_MIRRORS` below.
+ *
+ * Every field has a `default` matching the YAML's original values so
+ * the form is usable out-of-the-box. Missing fields fall back to the
+ * same defaults on the Python side (`STRUCTURE_DEFAULTS` in
+ * `static_moment_of_inertia_class.py`), so old presets without a
+ * `structure` block still load cleanly.
+ */
+export const STRUCTURE_PARAMS = {
+  'Stage 1 Structure': {
+    Stage1_propellant_order: {
+      label: 'Propellant Order', unit: '', type: 'enum',
+      options: ['fuel_first', 'ox_first'], default: 'fuel_first',
+      tip: 'Which propellant sits at the bottom of the tank stack',
+    },
+    Stage1_of_ratio: {
+      label: 'O/F Ratio', unit: '', type: 'float', default: 7,
+      tip: 'Oxidiser-to-fuel mass ratio (used to split propellant_mass into fuel/ox masses)',
+    },
+    Stage1_fuel_density: {
+      label: 'Fuel Density', unit: 'kg/m³', type: 'float', default: 800,
+    },
+    Stage1_ox_density: {
+      label: 'Ox Density', unit: 'kg/m³', type: 'float', default: 1400,
+    },
+    Stage1_stage_max_diameter_m: {
+      label: 'Stage Diameter', unit: 'm', type: 'float', default: 1.2,
+    },
+    Stage1_tank_head_length_m: {
+      label: 'Tank Head Length', unit: 'm', type: 'float', default: 0.6,
+    },
+    Stage1_engine_mass_kg: {
+      label: 'Engine Mass (each)', unit: 'kg', type: 'float', default: 135,
+    },
+    Stage1_engine_length_m: {
+      label: 'Engine Length', unit: 'm', type: 'float', default: 0.8,
+    },
+  },
+  'Stage 2 Structure': {
+    Stage2_propellant_order: {
+      label: 'Propellant Order', unit: '', type: 'enum',
+      options: ['fuel_first', 'ox_first'], default: 'fuel_first',
+    },
+    Stage2_of_ratio: {
+      label: 'O/F Ratio', unit: '', type: 'float', default: 7,
+    },
+    Stage2_fuel_density: {
+      label: 'Fuel Density', unit: 'kg/m³', type: 'float', default: 800,
+    },
+    Stage2_ox_density: {
+      label: 'Ox Density', unit: 'kg/m³', type: 'float', default: 1400,
+    },
+    Stage2_stage_max_diameter_m: {
+      label: 'Stage Diameter', unit: 'm', type: 'float', default: 1.2,
+    },
+    Stage2_tank_head_length_m: {
+      label: 'Tank Head Length', unit: 'm', type: 'float', default: 0.6,
+    },
+    Stage2_engine_mass_kg: {
+      label: 'Engine Mass (each)', unit: 'kg', type: 'float', default: 135,
+    },
+    Stage2_engine_length_m: {
+      label: 'Engine Length', unit: 'm', type: 'float', default: 0.8,
+    },
+  },
+  'Stage 3 Structure': {
+    Stage3_propellant_order: {
+      label: 'Propellant Order', unit: '', type: 'enum',
+      options: ['fuel_first', 'ox_first'], default: 'fuel_first',
+    },
+    Stage3_of_ratio: {
+      label: 'O/F Ratio', unit: '', type: 'float', default: 6.9,
+    },
+    Stage3_fuel_density: {
+      label: 'Fuel Density', unit: 'kg/m³', type: 'float', default: 800,
+    },
+    Stage3_ox_density: {
+      label: 'Ox Density', unit: 'kg/m³', type: 'float', default: 1400,
+    },
+    Stage3_stage_max_diameter_m: {
+      label: 'Stage Diameter', unit: 'm', type: 'float', default: 1.2,
+    },
+    Stage3_tank_head_length_m: {
+      label: 'Tank Head Length', unit: 'm', type: 'float', default: 0.6,
+    },
+    Stage3_engine_mass_kg: {
+      label: 'Engine Mass (each)', unit: 'kg', type: 'float', default: 60,
+    },
+    Stage3_engine_length_m: {
+      label: 'Engine Length', unit: 'm', type: 'float', default: 0.8,
+    },
+  },
+  'Engines (Global)': {
+    engine_inner_radius_m: {
+      label: 'Engine Inner Radius', unit: 'm', type: 'float', default: 0.18,
+      tip: 'Inner radius of the hollow-cylinder engine model',
+    },
+    engine_outer_radius_m: {
+      label: 'Engine Outer Radius', unit: 'm', type: 'float', default: 0.2,
+      tip: 'Must be greater than the inner radius',
+    },
+    default_engine_length_m: {
+      label: 'Fallback Engine Length', unit: 'm', type: 'float', default: 0.5,
+      tip: 'Used when a per-stage engine length is missing or invalid',
+    },
+  },
+  'Tanks (Global)': {
+    fuel_tank_mass_ratio: {
+      label: 'Fuel Tank Mass Ratio', unit: '', type: 'float', default: 0.12,
+      tip: 'Tank mass = fuel mass × this ratio',
+    },
+    oxidizer_tank_mass_ratio: {
+      label: 'Ox Tank Mass Ratio', unit: '', type: 'float', default: 0.12,
+    },
+    fuel_tank_head_mass: {
+      label: 'Tank Head Mass', unit: 'kg', type: 'float', default: 30,
+      tip: 'Mass of each end-cap on the propellant tanks',
+    },
+    tank_thickness_m: {
+      label: 'Tank Wall Thickness', unit: 'm', type: 'float', default: 0.01,
+    },
+  },
+  'Interstages': {
+    stage12_interstage_mass_kg: {
+      label: 'S1-S2 Mass', unit: 'kg', type: 'float', default: 25,
+    },
+    stage12_interstage_length_m: {
+      label: 'S1-S2 Length', unit: 'm', type: 'float', default: 0.6,
+    },
+    stage23_interstage_mass_kg: {
+      label: 'S2-S3 Mass', unit: 'kg', type: 'float', default: 25,
+    },
+    stage23_interstage_length_m: {
+      label: 'S2-S3 Length', unit: 'm', type: 'float', default: 0.6,
+    },
+  },
+  'Fairing Geometry': {
+    fairing_radius_m: {
+      label: 'Fairing Radius', unit: 'm', type: 'float', default: 0.75,
+    },
+    fairing_length_m: {
+      label: 'Fairing Length', unit: 'm', type: 'float', default: 5,
+    },
+  },
+  'Payload Geometry': {
+    payload_radius_m: {
+      label: 'Payload Radius', unit: 'm', type: 'float', default: 0.6,
+    },
+    payload_length_m: {
+      label: 'Payload Length', unit: 'm', type: 'float', default: 1,
+    },
+  },
+};
+
+/**
+ * Locked-mirror metadata for the Structure tab. Each entry maps a
+ * Structure-tab section name to a list of fields that should render
+ * as disabled inputs reading from the Simulation tab's state. The
+ * Structure tab's renderer puts these at the top of the matching
+ * section with a small "set in Simulation tab" caption + arrow link.
+ *
+ *   `from`: dot-path into `params` (e.g. 'Stage1.propellant_mass')
+ *   `label`: what to show as the field label
+ *   `unit`: optional unit suffix
+ */
+export const LOCKED_MIRRORS = {
+  'Stage 1 Structure': [
+    { from: 'Stage1.propellant_mass',    label: 'Propellant Mass',    unit: 'kg' },
+    { from: 'Stage1.number_of_engines',  label: 'Number of Engines',  unit: ''   },
+  ],
+  'Stage 2 Structure': [
+    { from: 'Stage2.propellant_mass',    label: 'Propellant Mass',    unit: 'kg' },
+    { from: 'Stage2.number_of_engines',  label: 'Number of Engines',  unit: ''   },
+  ],
+  'Stage 3 Structure': [
+    { from: 'Stage3.propellant_mass',    label: 'Propellant Mass',    unit: 'kg' },
+    { from: 'Stage3.number_of_engines',  label: 'Number of Engines',  unit: ''   },
+  ],
+  'Fairing Geometry': [
+    { from: 'fairing_mass',              label: 'Fairing Mass',       unit: 'kg' },
+  ],
+  'Payload Geometry': [
+    { from: 'final_payload_mass',        label: 'Payload Mass',       unit: 'kg' },
+  ],
+};
+
 export const DEBRIS_PARAMS = {
   General: {
     failure_interval_s: {

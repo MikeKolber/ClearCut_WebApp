@@ -219,6 +219,15 @@ export function saveTrajectoryPreset(name, payload, overwrite = false) {
   });
 }
 
+/** Delete a saved trajectory preset by name (file stem, no `.json`).
+ *  Returns `{ deleted: name }` on success, 404 if not on disk. */
+export function deleteTrajectoryPreset(name) {
+  return request(
+    `/api/trajectory/presets/${encodeURIComponent(name)}`,
+    { method: 'DELETE' }
+  );
+}
+
 /** Upload an external CSV/XLSX as the new `simulation_output.csv`.
  *  `file` is a browser `File` object from a `<input type="file">`.
  *  Returns `{ rows, name }` on success.
@@ -257,10 +266,10 @@ export async function loadSimulationFile(file) {
  *  On a name collision *without* `overwrite`, throws an Error with
  *  `err.status === 409` and `err.body.exists === true` so the caller
  *  can prompt the user before retrying. */
-export function saveCurrentSimulation(name, overwrite = false) {
+export function saveCurrentSimulation(name, overwrite = false, params = null) {
   return request('/api/trajectory/save-current', {
     method: 'POST',
-    body: JSON.stringify({ name, overwrite }),
+    body: JSON.stringify({ name, overwrite, params }),
   });
 }
 
@@ -275,6 +284,16 @@ export function loadSavedSimulation(filename) {
     method: 'POST',
     body: JSON.stringify({ filename }),
   });
+}
+
+/** Delete a saved simulation from Pre-loaded Trajectories/. Removes
+ *  the XLSX, its `.json` config sidecar (if any), and any cached
+ *  artefacts. Returns `{ deleted: filename }` on success. */
+export function deleteSavedSimulation(filename) {
+  return request(
+    `/api/trajectory/saved/${encodeURIComponent(filename)}`,
+    { method: 'DELETE' }
+  );
 }
 
 /** List `.csv` / `.xlsx` files in the `Pre-loaded Trajectories/`
@@ -344,6 +363,14 @@ export function saveDebrisPreset(name, payload, overwrite = false) {
     method: 'POST',
     body: JSON.stringify({ name, payload, overwrite }),
   });
+}
+
+/** Delete a saved debris preset by name. Mirrors `deleteTrajectoryPreset`. */
+export function deleteDebrisPreset(name) {
+  return request(
+    `/api/debris/presets/${encodeURIComponent(name)}`,
+    { method: 'DELETE' }
+  );
 }
 
 /** Spawn a debris-analysis run. `body = { mode, interval_s?, custom_times?, params }`.
