@@ -1,5 +1,5 @@
 {
-  "simulation_time": 1000,
+  "simulation_time": 3000,
   "lat_launch": 30.5,
   "lon_launch": 34.8,
   "height_launch": 9500,
