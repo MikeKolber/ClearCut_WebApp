@@ -119,12 +119,16 @@ services:
       # to use SameSite=None (handled in production via CC_COOKIE_SECURE).
       - key: REACT_APP_API_BASE
         value: https://clearcut-backend-lw1r.onrender.com
-    # Note: deliberately no `headers` block here. Earlier we set
-    # `X-Content-Type-Options: nosniff` and friends "for defense in
-    # depth", but they were breaking MapLibre's web worker (the 2D map
-    # showed nothing and the console threw a minified
-    # `o is not defined` from evented.ts). For a private internal
-    # tool behind login, these headers cost more than they bought.
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: same-origin
     routes:
       # SPA fallback — any non-/api/ path that isn't a real built file
       # falls through to index.html so React-Router can handle it.
