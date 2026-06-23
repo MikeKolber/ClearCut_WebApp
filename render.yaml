@@ -32,7 +32,10 @@ services:
     plan: starter            # $7/mo always-on. Use 'free' to test (sleeps after 15min idle).
     region: oregon           # Change if you want a closer Render region.
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    # Install both requirement files — backend/ has just the web/auth
+    # deps; the heavy scientific stack (pandas, scipy, pyproj, plotly,
+    # numba, etc.) lives with the calculation engines.
+    buildCommand: pip install -r requirements.txt && pip install -r ../physics_engines/core/requirements.txt
     # 2 worker processes, 120-second timeout (room for long TDMS parses).
     startCommand: gunicorn -w 2 --timeout 120 -b 0.0.0.0:$PORT app:app
     healthCheckPath: /api/ping
