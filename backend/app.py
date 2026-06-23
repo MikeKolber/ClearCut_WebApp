@@ -133,12 +133,214 @@ except Exception as exc:  # pragma: no cover - surfaced via /api/ping
 else:
     _PBS_IMPORT_ERROR = None
 
+# Engine-test storage backend — picks local-disk or Cloudflare R2 based
+# on env vars. See `engine_test_storage.py` for details.
+from engine_test_storage import (  # noqa: E402
+    VIDEO_EXTENSIONS,
+    get_engine_test_storage,
+)
 
-VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
+try:
+    _engine_test_storage = get_engine_test_storage(_ENGINE_TESTS_DATA)
+    _ENGINE_TEST_STORAGE_ERROR = None
+except Exception as exc:
+    _engine_test_storage = None  # type: ignore[assignment]
+    _ENGINE_TEST_STORAGE_ERROR = f"{type(exc).__name__}: {exc}"
 
 
 app = Flask(__name__)
-CORS(app)
+
+# CORS: allow credentials so the auth cookie can travel cross-origin if a
+# deployer points the frontend at this backend with a different REACT_APP_API_BASE.
+# In the standard same-origin setup (CRA proxy in dev, reverse proxy in prod)
+# this config is harmless. CORS_ORIGINS is comma-separated; default covers
+# the CRA dev server.
+_CORS_ORIGINS = [
+    o.strip() for o in
+    os.environ.get("CC_CORS_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
+CORS(app, supports_credentials=True, origins=_CORS_ORIGINS)
+
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+# A signed-cookie session model with a single shared credential (extensible
+# to a small users table later — see _check_credentials).
+#
+#   Env vars (all optional in dev — loud warnings if missing):
+#     CC_USERNAME        login username                               default: admin
+#     CC_PASSWORD_HASH   bcrypt hash of the password (NOT the plaintext)
+#                                                                      default: hash of "admin"
+#     CC_SECRET_KEY      cookie-signing key (rotates → all sessions invalid)
+#     CC_SESSION_HOURS   session lifetime in hours                    default: 12
+#     CC_COOKIE_SECURE   "1" to mark cookies Secure (HTTPS only)      default: 0
+#
+#   Generate a hash:
+#     python -c "import bcrypt,getpass; print(bcrypt.hashpw(getpass.getpass('pw: ').encode(), bcrypt.gensalt()).decode())"
+# ---------------------------------------------------------------------------
+
+import secrets
+from functools import wraps
+
+import bcrypt
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+
+_DEFAULT_USERNAME = "admin"
+_DEFAULT_PASSWORD_HASH = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
+
+CC_USERNAME = os.environ.get("CC_USERNAME", _DEFAULT_USERNAME)
+CC_PASSWORD_HASH = os.environ.get("CC_PASSWORD_HASH", _DEFAULT_PASSWORD_HASH)
+_SECRET_FROM_ENV = os.environ.get("CC_SECRET_KEY")
+CC_SECRET_KEY = _SECRET_FROM_ENV or secrets.token_urlsafe(32)
+CC_SESSION_HOURS = int(os.environ.get("CC_SESSION_HOURS", "12"))
+CC_COOKIE_SECURE = os.environ.get("CC_COOKIE_SECURE", "0") == "1"
+
+_AUTH_COOKIE_NAME = "cc_session"
+# Endpoints that must remain reachable without a session.
+_AUTH_PUBLIC_PATHS = {
+    "/api/ping",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/whoami",
+}
+
+if CC_USERNAME == _DEFAULT_USERNAME or CC_PASSWORD_HASH == _DEFAULT_PASSWORD_HASH:
+    print(
+        "\n[clearcut-auth] WARNING: using DEFAULT credentials (admin / admin). "
+        "Set CC_USERNAME and CC_PASSWORD_HASH before deploying.\n",
+        file=sys.stderr, flush=True,
+    )
+if not _SECRET_FROM_ENV:
+    print(
+        "[clearcut-auth] WARNING: CC_SECRET_KEY not set; using a random "
+        "per-process key. Sessions will not survive a backend restart. "
+        "Set CC_SECRET_KEY in production.\n",
+        file=sys.stderr, flush=True,
+    )
+
+
+def _serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(CC_SECRET_KEY, salt="cc-auth-v1")
+
+
+def _issue_token(username: str) -> str:
+    return _serializer().dumps({"u": username})
+
+
+def _validate_token(token: str) -> str | None:
+    try:
+        data = _serializer().loads(token, max_age=CC_SESSION_HOURS * 3600)
+    except (BadSignature, SignatureExpired):
+        return None
+    if isinstance(data, dict):
+        return data.get("u")
+    return None
+
+
+def _check_credentials(username: str, password: str) -> bool:
+    """Single-shared-credential check. Swap this body for a SQLite/users-table
+    lookup when you outgrow the env-var model — the rest of the auth flow
+    (signed cookie, before_request gate) doesn't need to change."""
+    if not username or not password:
+        return False
+    if username != CC_USERNAME:
+        # Still run bcrypt to keep timing roughly constant — prevents trivial
+        # username enumeration via response-time differences.
+        bcrypt.checkpw(b"\0", CC_PASSWORD_HASH.encode("utf-8"))
+        return False
+    try:
+        return bcrypt.checkpw(
+            password.encode("utf-8"), CC_PASSWORD_HASH.encode("utf-8")
+        )
+    except (ValueError, TypeError):
+        return False
+
+
+def _current_user() -> str | None:
+    token = request.cookies.get(_AUTH_COOKIE_NAME)
+    return _validate_token(token) if token else None
+
+
+# Naive in-memory rate limit for /api/auth/login: max 5 failed attempts per
+# IP per 5 minutes. Fine for a small private deployment; swap for
+# flask-limiter or a reverse-proxy rule if you need anything sturdier.
+_login_attempts: dict[str, list[float]] = {}
+_LOGIN_WINDOW_S = 300.0
+_LOGIN_MAX = 5
+
+
+def _login_rate_limited(ip: str) -> bool:
+    now = time.time()
+    fresh = [t for t in _login_attempts.get(ip, []) if now - t < _LOGIN_WINDOW_S]
+    _login_attempts[ip] = fresh
+    return len(fresh) >= _LOGIN_MAX
+
+
+def _record_login_failure(ip: str) -> None:
+    _login_attempts.setdefault(ip, []).append(time.time())
+
+
+@app.before_request
+def _enforce_auth():
+    """Gate every /api/* path behind a valid session cookie.
+    Non-/api/* paths (e.g. static SPA assets when served by Flask) and
+    CORS preflights are passed through untouched."""
+    p = request.path
+    if not p.startswith("/api/"):
+        return None
+    if request.method == "OPTIONS":
+        return None
+    if p in _AUTH_PUBLIC_PATHS:
+        return None
+    if _current_user() is None:
+        return jsonify({"error": "auth required"}), 401
+    return None
+
+
+@app.post("/api/auth/login")
+def auth_login():
+    payload = request.get_json(silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    ip = request.remote_addr or "unknown"
+
+    if _login_rate_limited(ip):
+        return jsonify({"error": "too many attempts; try again later"}), 429
+
+    if not _check_credentials(username, password):
+        _record_login_failure(ip)
+        return jsonify({"error": "invalid credentials"}), 401
+
+    token = _issue_token(username)
+    resp = jsonify({"username": username})
+    resp.set_cookie(
+        _AUTH_COOKIE_NAME,
+        token,
+        max_age=CC_SESSION_HOURS * 3600,
+        httponly=True,
+        secure=CC_COOKIE_SECURE,
+        samesite="Strict",
+        path="/",
+    )
+    _login_attempts.pop(ip, None)
+    return resp
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    resp = jsonify({"ok": True})
+    resp.delete_cookie(_AUTH_COOKIE_NAME, path="/")
+    return resp
+
+
+@app.get("/api/auth/whoami")
+def auth_whoami():
+    user = _current_user()
+    if user is None:
+        return jsonify({"error": "not authenticated"}), 401
+    return jsonify({"username": user})
 
 
 def _now_iso() -> str:
@@ -151,13 +353,17 @@ def _now_iso() -> str:
 
 @app.get("/api/ping")
 def ping():
+    if _engine_test_storage is not None:
+        engine_tests_status = f"ok ({_engine_test_storage.description})"
+    else:
+        engine_tests_status = f"unavailable: {_ENGINE_TEST_STORAGE_ERROR}"
     return jsonify(
         {
             "status": "ok",
             "time": _now_iso(),
             "engines": {
                 "pbs": "ok" if calculate_pbs else f"unavailable: {_PBS_IMPORT_ERROR}",
-                "engine_tests": "ok" if _ENGINE_TESTS_DATA.is_dir() else "data dir missing",
+                "engine_tests": engine_tests_status,
             },
         }
     )
@@ -235,79 +441,40 @@ def pbs_calculate():
 # ---------------------------------------------------------------------------
 # Engine Tests
 # ---------------------------------------------------------------------------
+# All engine-test data access goes through `_engine_test_storage`, which
+# is either a LocalDiskEngineTestStorage (development) or an
+# R2EngineTestStorage (production). The routes don't care which.
 
-def _list_test_folders():
-    if not _ENGINE_TESTS_DATA.is_dir():
-        return []
-    return sorted(
-        (p for p in _ENGINE_TESTS_DATA.iterdir()
-         if p.is_dir() and not p.name.startswith(".")),
-        key=lambda p: p.name,
-    )
-
-
-def _resolve_test_folder(name: str) -> Path | None:
-    """Resolve a test folder by name, validating it stays inside the data dir."""
-    if not name:
-        return None
-    candidate = (_ENGINE_TESTS_DATA / name).resolve()
-    try:
-        candidate.relative_to(_ENGINE_TESTS_DATA.resolve())
-    except ValueError:
-        return None
-    return candidate if candidate.is_dir() else None
-
-
-def _classify_files(folder: Path) -> tuple[list[Path], list[Path]]:
-    tdms = sorted(folder.glob("*.tdms"))
-    videos = sorted(
-        f for f in folder.iterdir()
-        if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS
-    )
-    return tdms, videos
-
-
-def _file_meta(path: Path) -> dict:
-    try:
-        st = path.stat()
-        return {
-            "name": path.name,
-            "size_bytes": st.st_size,
-            "mtime": st.st_mtime,
-        }
-    except OSError:
-        return {"name": path.name, "size_bytes": 0, "mtime": 0}
+def _require_storage():
+    """Helper that returns a 503 response if storage failed to init at
+    import time. Routes that hit storage call this first."""
+    if _engine_test_storage is None:
+        return jsonify(
+            {"error": f"engine-test storage unavailable: {_ENGINE_TEST_STORAGE_ERROR}"}
+        ), 503
+    return None
 
 
 @app.get("/api/engine/tests")
 def engine_tests_list():
-    folders = _list_test_folders()
-    out = []
-    for folder in folders:
-        tdms, videos = _classify_files(folder)
-        out.append(
-            {
-                "name": folder.name,
-                "tdms_count": len(tdms),
-                "video_count": len(videos),
-            }
-        )
-    return jsonify({"data_dir": str(_ENGINE_TESTS_DATA), "tests": out})
+    err = _require_storage()
+    if err:
+        return err
+    return jsonify({
+        "storage": _engine_test_storage.description,
+        "tests":   _engine_test_storage.list_tests(),
+    })
 
 
 @app.get("/api/engine/tests/<path:name>")
 def engine_test_detail(name: str):
-    folder = _resolve_test_folder(name)
-    if folder is None:
+    err = _require_storage()
+    if err:
+        return err
+    detail = _engine_test_storage.list_test_files(name)
+    if detail is None:
         return jsonify({"error": f"test folder not found: {name}"}), 404
-    tdms, videos = _classify_files(folder)
-    return jsonify(
-        {
-            "name": folder.name,
-            "tdms_files": [_file_meta(p) for p in tdms],
-            "video_files": [_file_meta(p) for p in videos],
-        }
-    )
+    return jsonify(detail)
 
 
 _TDMS_CHANNEL_FILTER = ("Voltage", "Current")
@@ -319,19 +486,13 @@ def engine_test_tdms(name: str, file_name: str):
 
     Filters out 'Voltage' / 'Current' channels (matching the desktop GUI).
     """
-    folder = _resolve_test_folder(name)
-    if folder is None:
-        return jsonify({"error": f"test folder not found: {name}"}), 404
+    err = _require_storage()
+    if err:
+        return err
 
-    candidate = (folder / file_name).resolve()
-    try:
-        candidate.relative_to(folder.resolve())
-    except ValueError:
-        return jsonify({"error": "invalid file path"}), 400
-    if not candidate.is_file():
+    local_path = _engine_test_storage.open_tdms_file(name, file_name)
+    if local_path is None:
         return jsonify({"error": f"file not found: {file_name}"}), 404
-    if candidate.suffix.lower() != ".tdms":
-        return jsonify({"error": "expected a .tdms file"}), 400
 
     try:
         from nptdms import TdmsFile
@@ -343,7 +504,7 @@ def engine_test_tdms(name: str, file_name: str):
     channels: dict[str, dict] = {}
 
     try:
-        with TdmsFile.open(str(candidate)) as tdms_file:
+        with TdmsFile.open(local_path) as tdms_file:
             try:
                 ai_group = tdms_file["AI Channels"]
             except KeyError:
@@ -389,8 +550,8 @@ def engine_test_tdms(name: str, file_name: str):
     elapsed = time.perf_counter() - t0
     return jsonify(
         {
-            "test_name": folder.name,
-            "file_name": candidate.name,
+            "test_name": name,
+            "file_name": file_name,
             "channel_count": len(channels),
             "load_time_s": round(elapsed, 3),
             "channels": channels,
@@ -2874,32 +3035,23 @@ def debris_output_zip(run_id: str):
 
 @app.get("/api/engine/tests/<path:name>/video/<path:file_name>")
 def engine_test_video(name: str, file_name: str):
-    """Stream a video file from a test folder.
+    """Serve a video file from the configured engine-test storage.
 
-    Flask's `send_file(..., conditional=True)` automatically supports HTTP
-    Range requests, which is what `<video>` uses for seeking.
+    Behaviour depends on backend:
+      * Local disk → `send_file(..., conditional=True)`, which handles
+        HTTP Range requests so `<video>` seeking works.
+      * R2        → 302 redirect to a short-lived presigned URL; the
+        browser fetches the bytes directly from R2 (Range supported
+        natively, no bandwidth through the Flask host).
     """
-    folder = _resolve_test_folder(name)
-    if folder is None:
-        return jsonify({"error": f"test folder not found: {name}"}), 404
+    err = _require_storage()
+    if err:
+        return err
 
-    candidate = (folder / file_name).resolve()
-    try:
-        candidate.relative_to(folder.resolve())
-    except ValueError:
-        return jsonify({"error": "invalid file path"}), 400
-    if not candidate.is_file():
+    resp = _engine_test_storage.video_response(name, file_name)
+    if resp is None:
         return jsonify({"error": f"file not found: {file_name}"}), 404
-    if candidate.suffix.lower() not in VIDEO_EXTENSIONS:
-        return jsonify({"error": "expected a video file"}), 400
-
-    mt, _ = mimetypes.guess_type(candidate.name)
-    return send_file(
-        str(candidate),
-        mimetype=mt or "application/octet-stream",
-        conditional=True,
-        as_attachment=False,
-    )
+    return resp
 
 
 # ---------------------------------------------------------------------------

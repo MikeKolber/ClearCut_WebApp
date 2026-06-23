@@ -123,10 +123,15 @@ function RawData() {
       try {
         // Use fetch + ReadableStream so we can show a progress bar
         // while the binary buffer arrives (could be 30-300 MB).
-        const res = await fetch('/api/trajectory/output/raw/all');
+        const res = await fetch('/api/trajectory/output/raw/all', {
+          credentials: 'include',
+        });
         if (!res.ok) {
           let msg = `HTTP ${res.status}`;
           try { msg = (await res.json())?.error || msg; } catch { /* ignore */ }
+          if (res.status === 401) {
+            try { window.dispatchEvent(new CustomEvent('cc:auth-expired')); } catch {}
+          }
           throw new Error(msg);
         }
         const ct = res.headers.get('content-type') || '';

@@ -7,8 +7,33 @@
 
 const API_BASE = process.env.REACT_APP_API_BASE || '';
 
+/* Paths the auth gate should NOT trigger a redirect for. A 401 from
+   /api/auth/whoami is the *expected* "not logged in" signal during the
+   initial gate check, not a session-expired event. */
+const AUTH_NOOP_PATHS = new Set([
+  '/api/auth/whoami',
+  '/api/auth/login',
+  '/api/auth/logout',
+]);
+
+/* Dispatched whenever the backend says 401 on any /api/* call other than
+   the auth endpoints themselves. App.js listens for this and bounces the
+   user to /login. Using a CustomEvent keeps services/api.js free of any
+   react-router coupling. */
+function notifyAuthExpired() {
+  try {
+    window.dispatchEvent(new CustomEvent('cc:auth-expired'));
+  } catch {
+    /* SSR / test envs without window — no-op */
+  }
+}
+
 export async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
+    /* `include` so the signed-session cookie travels even when
+       REACT_APP_API_BASE points at a different origin. In the standard
+       same-origin / CRA-proxy setup this is a no-op. */
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
@@ -26,6 +51,9 @@ export async function request(path, options = {}) {
         /* ignore */
       }
     }
+    if (res.status === 401 && !AUTH_NOOP_PATHS.has(path)) {
+      notifyAuthExpired();
+    }
     // Attach the parsed body and HTTP status to the Error so callers
     // can distinguish e.g. a 409 conflict (preset already exists)
     // from a real server failure without re-stringifying.
@@ -39,6 +67,23 @@ export async function request(path, options = {}) {
 
 export function ping() {
   return request('/api/ping');
+}
+
+/* ─── Auth ────────────────────────────────────────────────────────── */
+
+export function login(username, password) {
+  return request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function logout() {
+  return request('/api/auth/logout', { method: 'POST' });
+}
+
+export function whoami() {
+  return request('/api/auth/whoami');
 }
 
 /* ─── PBS ─────────────────────────────────────────────────────────── */
@@ -106,13 +151,16 @@ export function loadTrajectoryRaw({ offset = 0, limit = 5000 } = {}) {
  *  Or `{ exists: false, message }` if no simulation output exists yet.
  */
 export async function loadTrajectoryRawAll() {
-  const res = await fetch(`${API_BASE}/api/trajectory/output/raw/all`);
+  const res = await fetch(`${API_BASE}/api/trajectory/output/raw/all`, {
+    credentials: 'include',
+  });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
       const data = await res.json();
       if (data?.error) msg = data.error;
     } catch { /* ignore */ }
+    if (res.status === 401) notifyAuthExpired();
     throw new Error(msg);
   }
   const ct = res.headers.get('content-type') || '';
@@ -163,13 +211,14 @@ export function trajectoryDownloadUrl(format = 'csv') {
  *                                       'simulation_output.csv')}
  */
 export async function downloadFromBackend(url, suggestedFilename) {
-  const res = await fetch(url, { credentials: 'same-origin' });
+  const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) {
     let msg = `download failed: HTTP ${res.status}`;
     try {
       const body = await res.json();
       if (body?.error) msg = body.error;
     } catch { /* not JSON — keep generic message */ }
+    if (res.status === 401) notifyAuthExpired();
     const err = new Error(msg);
     err.status = res.status;
     throw err;
@@ -240,6 +289,7 @@ export async function loadSimulationFile(file) {
   fd.append('file', file);
   const res = await fetch(`${API_BASE}/api/trajectory/load`, {
     method: 'POST',
+    credentials: 'include',
     body: fd,
   });
   if (!res.ok) {
@@ -249,6 +299,7 @@ export async function loadSimulationFile(file) {
       body = await res.json();
       if (body?.error) msg = body.error;
     } catch { /* ignore */ }
+    if (res.status === 401) notifyAuthExpired();
     const err = new Error(msg);
     err.status = res.status;
     err.body = body;

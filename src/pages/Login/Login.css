@@ -1,0 +1,107 @@
+/* ─────────────────────────────────────────────────────────────────
+   Login — solid-black gate. Intentionally featureless: no logos,
+   no product name, no version chip, no status strip. Two inputs
+   and one button, centred. Designed to give nothing away to anyone
+   who lands on the URL.
+   ───────────────────────────────────────────────────────────────── */
+
+.Login-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.Login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 280px;
+  max-width: calc(100vw - 48px);
+  animation: Login-fade-in 220ms ease;
+}
+
+@keyframes Login-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.Login-input {
+  background: #060606;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #f5f5f5;
+  padding: 11px 13px;
+  font: 400 14px var(--font-sans, -apple-system, system-ui, sans-serif);
+  letter-spacing: 0.02em;
+  border-radius: 2px;
+  outline: none;
+  caret-color: rgba(255, 255, 255, 0.7);
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.Login-input::placeholder {
+  color: rgba(255, 255, 255, 0.26);
+  letter-spacing: 0.04em;
+}
+
+.Login-input:focus {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: #0a0a0a;
+}
+
+/* Hide browser auto-fill yellow/blue background that gives the form away. */
+.Login-input:-webkit-autofill,
+.Login-input:-webkit-autofill:hover,
+.Login-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #060606 inset;
+  -webkit-text-fill-color: #f5f5f5;
+  caret-color: rgba(255, 255, 255, 0.7);
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.Login-submit {
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f5f5f5;
+  padding: 11px 13px;
+  font: 500 12px var(--font-sans, -apple-system, system-ui, sans-serif);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.Login-submit:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.Login-submit:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.Login-submit:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.Login-error {
+  min-height: 16px;
+  margin-top: 2px;
+  font: 400 11px var(--font-mono, 'SF Mono', Menlo, Consolas, monospace);
+  color: #ef4444;
+  text-align: center;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.Login-error--shown {
+  opacity: 1;
+}
