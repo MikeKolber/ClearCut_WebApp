@@ -83,7 +83,18 @@ services:
     rootDir: .
     buildCommand: npm install && npm run build
     staticPublishPath: ./build
-    # Sensible defaults for a private-by-default app.
+    envVars:
+      # Frontend talks to the backend *directly* via its full URL
+      # rather than through a static-site rewrite. Render's rewrite
+      # placeholder substitution (`:splat`) doesn't fire reliably for
+      # cross-origin destinations — every proxied request was landing
+      # at the literal path `/api/:splat` on the backend.
+      #
+      # Going cross-origin requires the backend's CC_CORS_ORIGINS to
+      # include this static site's URL, and the backend's auth cookie
+      # to use SameSite=None (handled in production via CC_COOKIE_SECURE).
+      - key: REACT_APP_API_BASE
+        value: https://clearcut-backend-lw1r.onrender.com
     headers:
       - path: /*
         name: X-Frame-Options
@@ -95,18 +106,6 @@ services:
         name: Referrer-Policy
         value: same-origin
     routes:
-      # Forward API calls to the Flask backend. The browser sees only
-      # one origin (this static site's), so cookies are same-origin
-      # and SameSite=Strict works perfectly.
-      #
-      # The `-lw1r` suffix is what Render assigned because plain
-      # `clearcut-backend` was already taken globally on the platform.
-      # If you ever recreate the backend service and Render gives it
-      # a different suffix, update this URL to match.
-      - type: rewrite
-        source: /api/*
-        destination: https://clearcut-backend-lw1r.onrender.com/api/:splat
-
       # SPA fallback — any non-/api/ path that isn't a real built file
       # falls through to index.html so React-Router can handle it.
       - type: rewrite

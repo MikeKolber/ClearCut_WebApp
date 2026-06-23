@@ -300,14 +300,7 @@ def _enforce_auth():
     if p in _AUTH_PUBLIC_PATHS:
         return None
     if _current_user() is None:
-        # _debug_path/_method are temporary diagnostics for debugging
-        # the static-site → backend proxy. Safe to remove later.
-        return jsonify({
-            "error": "auth required",
-            "_debug_path": request.path,
-            "_debug_method": request.method,
-            "_debug_full_path": request.full_path,
-        }), 401
+        return jsonify({"error": "auth required"}), 401
     return None
 
 
@@ -327,13 +320,21 @@ def auth_login():
 
     token = _issue_token(username)
     resp = jsonify({"username": username})
+    # SameSite policy:
+    #   * Production (CC_COOKIE_SECURE=1) → "None" so the cookie travels
+    #     on cross-origin XHR from the static site (clearcut-frontend...)
+    #     to this backend (clearcut-backend...). "None" requires Secure
+    #     which we already have when CC_COOKIE_SECURE is on.
+    #   * Local dev (CC_COOKIE_SECURE=0) → "Strict" since the CRA proxy
+    #     makes everything same-origin and Strict is the safer default.
+    samesite_policy = "None" if CC_COOKIE_SECURE else "Strict"
     resp.set_cookie(
         _AUTH_COOKIE_NAME,
         token,
         max_age=CC_SESSION_HOURS * 3600,
         httponly=True,
         secure=CC_COOKIE_SECURE,
-        samesite="Strict",
+        samesite=samesite_policy,
         path="/",
     )
     _login_attempts.pop(ip, None)
