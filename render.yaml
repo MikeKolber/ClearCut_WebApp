@@ -1,0 +1,112 @@
+# ─────────────────────────────────────────────────────────────────
+# Render Blueprint config.
+#
+# What this provisions:
+#   1. clearcut-backend  — Flask + gunicorn web service ($7/mo Starter
+#                          tier, always-on). Reads env vars for auth,
+#                          CORS, and optional Cloudflare R2 storage.
+#   2. clearcut-frontend — React static site (free, CDN-edge cached).
+#                          Proxies /api/* to the backend so the browser
+#                          treats everything as same-origin.
+#
+# How to use:
+#   1. Push this file (along with the backend code) to GitHub.
+#   2. In Render's dashboard: New + → Blueprint → connect this repo.
+#   3. Render reads this file and creates both services. You'll be
+#      prompted to fill in the `sync: false` secrets (CC_USERNAME,
+#      CC_PASSWORD_HASH, etc.) before the first deploy.
+#
+# Notes:
+#   * If a name like "clearcut-backend" is already taken globally on
+#     Render, the dashboard will append a suffix and you'll need to
+#     update the static-site route's `destination:` URL accordingly.
+#   * `CC_SECRET_KEY` is auto-generated on first deploy and persists
+#     across redeploys. Rotating it logs every coworker out.
+# ─────────────────────────────────────────────────────────────────
+
+services:
+  # ───────────────────────── Backend ──────────────────────────────
+  - type: web
+    name: clearcut-backend
+    runtime: python
+    plan: starter            # $7/mo always-on. Use 'free' to test (sleeps after 15min idle).
+    region: oregon           # Change if you want a closer Render region.
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # 2 worker processes, 120-second timeout (room for long TDMS parses).
+    startCommand: gunicorn -w 2 --timeout 120 -b 0.0.0.0:$PORT app:app
+    healthCheckPath: /api/ping
+    envVars:
+      # Cookie-signing key — Render auto-generates 32 random bytes once,
+      # then keeps the same value across redeploys. Safe to ship.
+      - key: CC_SECRET_KEY
+        generateValue: true
+
+      # Production defaults (HTTPS-only cookies, 12-hour sessions).
+      - key: CC_COOKIE_SECURE
+        value: "1"
+      - key: CC_SESSION_HOURS
+        value: "12"
+
+      # ─ Sensitive: prompted on first deploy, never committed ─────
+      - key: CC_USERNAME
+        sync: false
+      - key: CC_PASSWORD_HASH
+        sync: false
+
+      # Optional, but recommended: comma-separated allow-list of
+      # browser origins. Set this to your final frontend URL after
+      # the static site is up (e.g. https://clearcut-frontend.onrender.com
+      # and/or https://tools.clearcutspace.com).
+      - key: CC_CORS_ORIGINS
+        sync: false
+
+      # ─ Cloudflare R2 (engine-test storage) — leave blank to skip ─
+      # When CC_R2_BUCKET is set, all four CC_R2_* vars must be set
+      # together. Leave them all blank to use local-disk mode (which
+      # on Render means an empty Engine Test page).
+      - key: CC_R2_BUCKET
+        sync: false
+      - key: CC_R2_ENDPOINT
+        sync: false
+      - key: CC_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CC_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CC_R2_PREFIX
+        sync: false
+
+  # ───────────────────────── Frontend ─────────────────────────────
+  - type: web
+    name: clearcut-frontend
+    runtime: static
+    rootDir: .
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./build
+    # Sensible defaults for a private-by-default app.
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: same-origin
+    routes:
+      # Forward API calls to the Flask backend. The browser sees only
+      # one origin (this static site's), so cookies are same-origin
+      # and SameSite=Strict works perfectly.
+      #
+      # If Render renames the backend service (e.g. because the name
+      # was taken), update the destination URL below to match.
+      - type: rewrite
+        source: /api/*
+        destination: https://clearcut-backend.onrender.com/api/:splat
+
+      # SPA fallback — any non-/api/ path that isn't a real built file
+      # falls through to index.html so React-Router can handle it.
+      - type: rewrite
+        source: /*
+        destination: /index.html
