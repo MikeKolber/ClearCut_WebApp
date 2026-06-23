@@ -300,7 +300,14 @@ def _enforce_auth():
     if p in _AUTH_PUBLIC_PATHS:
         return None
     if _current_user() is None:
-        return jsonify({"error": "auth required"}), 401
+        # _debug_path/_method are temporary diagnostics for debugging
+        # the static-site → backend proxy. Safe to remove later.
+        return jsonify({
+            "error": "auth required",
+            "_debug_path": request.path,
+            "_debug_method": request.method,
+            "_debug_full_path": request.full_path,
+        }), 401
     return None
 
 
