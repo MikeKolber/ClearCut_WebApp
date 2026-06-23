@@ -190,12 +190,17 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 _DEFAULT_USERNAME = "admin"
 _DEFAULT_PASSWORD_HASH = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
 
-CC_USERNAME = os.environ.get("CC_USERNAME", _DEFAULT_USERNAME)
-CC_PASSWORD_HASH = os.environ.get("CC_PASSWORD_HASH", _DEFAULT_PASSWORD_HASH)
-_SECRET_FROM_ENV = os.environ.get("CC_SECRET_KEY")
+# .strip() defends against accidental whitespace in env vars (Render's
+# dashboard sometimes preserves a trailing space or newline). Without
+# this, "clearcut" typed into the login form wouldn't match
+# "clearcut " sitting in the env var, and bcrypt would throw on a
+# hash with trailing whitespace.
+CC_USERNAME = os.environ.get("CC_USERNAME", _DEFAULT_USERNAME).strip()
+CC_PASSWORD_HASH = os.environ.get("CC_PASSWORD_HASH", _DEFAULT_PASSWORD_HASH).strip()
+_SECRET_FROM_ENV = (os.environ.get("CC_SECRET_KEY") or "").strip()
 CC_SECRET_KEY = _SECRET_FROM_ENV or secrets.token_urlsafe(32)
-CC_SESSION_HOURS = int(os.environ.get("CC_SESSION_HOURS", "12"))
-CC_COOKIE_SECURE = os.environ.get("CC_COOKIE_SECURE", "0") == "1"
+CC_SESSION_HOURS = int(os.environ.get("CC_SESSION_HOURS", "12").strip())
+CC_COOKIE_SECURE = os.environ.get("CC_COOKIE_SECURE", "0").strip() == "1"
 
 _AUTH_COOKIE_NAME = "cc_session"
 # Endpoints that must remain reachable without a session.
