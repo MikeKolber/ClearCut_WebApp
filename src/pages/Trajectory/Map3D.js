@@ -5,7 +5,7 @@ import React, {
   useRef,
   forwardRef,
 } from 'react';
-import { Deck, _GlobeView as GlobeView } from '@deck.gl/core';
+import { Deck, MapView, _GlobeView as GlobeView } from '@deck.gl/core';
 import { TileLayer } from '@deck.gl/geo-layers';
 import {
   BitmapLayer,
@@ -14,28 +14,26 @@ import {
   SolidPolygonLayer,
 } from '@deck.gl/layers';
 
-/* ═══ Map3D — deck.gl-only globe view ═══════════════════════════════
+/* ═══ Map3D — unified deck.gl map (Globe + Mercator) ════════════════
  *
- * Used when the user picks "Globe" in the sidebar. Why split from the
- * MapLibre instance in MapView.js?
- *
- *   MapLibre 5.x has a `globe` projection mode that's great for the
- *   surface, but its rendering matrix doesn't reproject deck.gl z-values
- *   correctly. Our 3D trajectory line ended up floating diagonally off
- *   the planet — half on the surface, half in space.
- *
- *   deck.gl's own GlobeView handles altitude natively (the third
- *   coordinate of a [lon, lat, z] point becomes radial distance in
- *   meters), so by rendering 3D in this component and 2D in MapLibre
- *   we sidestep the bug entirely. From the user's perspective the
- *   Globe / Flat radio still flips between the same two visuals — just
- *   under different rendering engines.
+ * Renders both the Globe (3D _GlobeView) and Flat (2D Mercator MapView)
+ * views from a single deck.gl instance. Originally the Flat view was
+ * MapLibre, but MapLibre 5.x had cryptic minified worker errors on
+ * Render's static-site CDN ("o is not defined" from evented.ts:153)
+ * that we couldn't fix without sinking serious time. deck.gl was
+ * already known-working for Globe so we let it cover both modes.
  *
  * Data props
- *   trajectory3D     [[lon, lat, height_m], …]   the rocket's true path
+ *   trajectory3D     [[lon, lat, height_m], …]   the rocket's true path.
+ *                                                 In mercator the z is
+ *                                                 ignored visually
+ *                                                 (pitch is locked to 0
+ *                                                 so it always reads as
+ *                                                 a flat ground track).
  *   debrisFeatures   { origins, impacts, ellipses } GeoJSON FCs
  *   launchSite       [lon, lat] of the first valid trajectory sample
  *   selectedRow      number | null — drives dim-others / highlight-this
+ *   projection       'globe' (default) | 'mercator'
  *
  * Interaction
  *   onSelectRow(rowNum, kind)  fires when the user clicks a debris dot
@@ -45,6 +43,9 @@ import {
  *   .fitToBounds(bounds, { maxZoom })   frame [[minLon,minLat],[maxLon,maxLat]]
  *   .flyTo({ longitude, latitude, zoom, pitch, bearing })
  *   .reset()                            reset to the global default view
+ *   .setPlaybackView(...)               see playback section below
+ *   .setPlaybackOverlay(...)
+ *   .clearPlayback()
  */
 
 // EOX Sentinel-2 cloudless 2020 — modern (cloud-removed mosaic of
@@ -132,9 +133,13 @@ const Map3D = forwardRef(function Map3D(
     // cache alive. The first toggle to Globe pays the ~1s WebGL/init
     // cost; every toggle after that is instantaneous.
     visible = true,
+    // 'globe'    → 3D _GlobeView
+    // 'mercator' → 2D MapView (top-down)
+    projection = 'globe',
   },
   ref
 ) {
+  const isMercator = projection === 'mercator';
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const deckRef = useRef(null);
@@ -184,6 +189,9 @@ const Map3D = forwardRef(function Map3D(
   const lastInteractionRef = useRef(0);
   const idleSpinRafRef     = useRef(null);
   useEffect(() => {
+    // Auto-spin is a globe-only flourish; in mercator it would just
+    // pan the world to the side, which feels broken.
+    if (isMercator) return undefined;
     // Don't auto-spin if a trajectory is loaded — the user is here
     // to look at *that*, not at a rotating planet.
     if (trajectory3D && trajectory3D.length > 1) {
@@ -193,8 +201,8 @@ const Map3D = forwardRef(function Map3D(
       }
       return undefined;
     }
-    // Don't spin when this component is hidden behind the Mercator
-    // map — wasted GPU on an off-screen canvas.
+    // Don't spin when this component is hidden — wasted GPU on an
+    // off-screen canvas.
     if (!visible) return undefined;
 
     const SPIN_DEG_PER_SEC = 2;      // gentle, ~3 mins/revolution
@@ -228,7 +236,7 @@ const Map3D = forwardRef(function Map3D(
         idleSpinRafRef.current = null;
       }
     };
-  }, [trajectory3D, visible]);
+  }, [trajectory3D, visible, isMercator]);
 
   /* ── imperative API for the parent ────────────────────────── */
   useImperativeHandle(ref, () => ({
@@ -242,10 +250,12 @@ const Map3D = forwardRef(function Map3D(
         Math.abs(maxLat - minLat),
         0.5
       );
-      // Heuristic zoom for GlobeView. Wider span ⇒ farther camera.
-      // log2(360 / span) gives roughly the same feel as MapLibre's
-      // fitBounds at the same lat/lon. Subtract 0.5 to leave padding.
-      const zoom = Math.max(1, Math.min(maxZoom, Math.log2(360 / span) - 0.5));
+      // Heuristic zoom — both GlobeView and MapView use the same
+      // log-scale zoom convention (zoom 0 = world, +1 = half the span).
+      // Subtract 0.5 to leave padding. Subtract 1 in mercator because
+      // MapView covers more pixels per zoom unit than GlobeView.
+      const padding = isMercator ? 1.5 : 0.5;
+      const zoom = Math.max(0, Math.min(maxZoom, Math.log2(360 / span) - padding));
       applyViewState({ longitude: lon, latitude: lat, zoom });
     },
     flyTo: ({ longitude, latitude, zoom = 9, pitch = 0, bearing = 0 }) => {
@@ -281,6 +291,14 @@ const Map3D = forwardRef(function Map3D(
     setPlaybackOverlay: ({ trail, rocketPos, pulse = 1 } = {}) => {
       const next = [];
 
+      // In mercator, flatten the trail + rocket marker onto the
+      // surface (z=0) so they don't visually hover over their
+      // ground track. In globe, keep the altitudes so the rocket
+      // climbs naturally.
+      const flattenIfMercator = isMercator
+        ? (p) => [p[0], p[1], 0]
+        : (p) => p;
+
       // ── Trail (3 stacked PathLayers → comet-tail look) ──────
       // Wide diffuse glow underneath, a punchy mid body, and a
       // thin nearly-white core line to sell "freshly drawn". The
@@ -288,7 +306,8 @@ const Map3D = forwardRef(function Map3D(
       // per piece) so deck.gl can't lerp a fake equator-hugging
       // arc through lon=0 between a 179° and -179° vertex.
       if (Array.isArray(trail) && trail.length >= 2) {
-        const trailData = splitPathAtAntimeridian(trail)
+        const flattenedTrail = trail.map(flattenIfMercator);
+        const trailData = splitPathAtAntimeridian(flattenedTrail)
           .map((path) => ({ path }));
         next.push(new PathLayer({
           id: 'playback-trail-glow',
@@ -332,14 +351,16 @@ const Map3D = forwardRef(function Map3D(
       // sync with the trace, like an active beacon.
       if (
         Array.isArray(rocketPos) &&
-        rocketPos.length >= 3 &&
+        rocketPos.length >= 2 &&
         Number.isFinite(rocketPos[0]) &&
-        Number.isFinite(rocketPos[1]) &&
-        Number.isFinite(rocketPos[2])
+        Number.isFinite(rocketPos[1])
       ) {
+        const drawnPos = flattenIfMercator(
+          rocketPos.length >= 3 ? rocketPos : [rocketPos[0], rocketPos[1], 0]
+        );
         next.push(new ScatterplotLayer({
           id: 'playback-rocket-halo3',
-          data: [{ position: rocketPos }],
+          data: [{ position: drawnPos }],
           getPosition: (d) => d.position,
           getFillColor: [255, 195, 95, 38],
           getRadius: 30 * pulse,
@@ -347,7 +368,7 @@ const Map3D = forwardRef(function Map3D(
         }));
         next.push(new ScatterplotLayer({
           id: 'playback-rocket-halo2',
-          data: [{ position: rocketPos }],
+          data: [{ position: drawnPos }],
           getPosition: (d) => d.position,
           getFillColor: [255, 215, 130, 80],
           getRadius: 19 * pulse,
@@ -355,7 +376,7 @@ const Map3D = forwardRef(function Map3D(
         }));
         next.push(new ScatterplotLayer({
           id: 'playback-rocket-halo1',
-          data: [{ position: rocketPos }],
+          data: [{ position: drawnPos }],
           getPosition: (d) => d.position,
           getFillColor: [255, 240, 180, 130],
           getRadius: 11,
@@ -363,7 +384,7 @@ const Map3D = forwardRef(function Map3D(
         }));
         next.push(new ScatterplotLayer({
           id: 'playback-rocket-core',
-          data: [{ position: rocketPos }],
+          data: [{ position: drawnPos }],
           getPosition: (d) => d.position,
           getFillColor: [255, 255, 240, 255],
           getLineColor: [255, 200, 100, 255],
@@ -381,7 +402,7 @@ const Map3D = forwardRef(function Map3D(
       playbackLayersRef.current = [];
       pushLayers();
     },
-  }), []);
+  }), [isMercator]);
 
   /* ── deck.gl layer stack (memoized) ───────────────────────── */
   const layers = useMemo(() => {
@@ -424,8 +445,17 @@ const Map3D = forwardRef(function Map3D(
     // interprets them as meters above the surface. The path is split
     // at antimeridian crossings (one data entry per piece) so deck.gl
     // doesn't draw a fake equator-hugging arc bridging 179° → -179°.
+    //
+    // In mercator mode, strip the z so the path renders as a flat
+    // ground track. Otherwise MapView would render the elevation as
+    // a tall vertical streak whenever pitch != 0 (we lock pitch=0,
+    // but the layer tessellation still considers altitude — better to
+    // just zero it out and have a clean ground track).
     if (showAltitude && trajectory3D) {
-      const trajectoryData = splitPathAtAntimeridian(trajectory3D)
+      const sourcePath = isMercator
+        ? trajectory3D.map(([lon, lat]) => [lon, lat, 0])
+        : trajectory3D;
+      const trajectoryData = splitPathAtAntimeridian(sourcePath)
         .map((path) => ({ path }));
       out.push(new PathLayer({
         id: 'trajectory-3d-glow',
@@ -574,6 +604,7 @@ const Map3D = forwardRef(function Map3D(
     showImpacts,
     showEllipses,
     selectedRow,
+    isMercator,
   ]);
 
   /* ── hover tooltip (matches MapLibre popup look-and-feel) ─── */
@@ -671,9 +702,13 @@ const Map3D = forwardRef(function Map3D(
   }, []);
 
   /* ── deck.gl instance lifecycle ───────────────────────────── */
+  // Re-keyed on `isMercator` so the deck instance is fully recreated
+  // when the user toggles Globe ⇄ Flat. Cheaper than trying to mutate
+  // the view in place, and the basemap tiles are HTTP-cached so the
+  // visible re-init delay is ~100-200ms (not the full 1s cold-start).
   useEffect(() => {
     const host = containerRef.current;
-    if (!host || deckRef.current) return undefined;
+    if (!host) return undefined;
 
     const canvas = document.createElement('canvas');
     canvas.style.cssText =
@@ -682,26 +717,49 @@ const Map3D = forwardRef(function Map3D(
     host.appendChild(canvas);
     canvasRef.current = canvas;
 
+    // Per-projection view + controller. Mercator clamps differ
+    // (latitude can go to ~85, beyond which the projection blows up;
+    // zoom can go higher because there's no spherical singularity to
+    // worry about).
+    const view = isMercator
+      ? new MapView({ id: 'mercator', repeat: false })
+      : new GlobeView({ id: 'globe', resolution: 12 });
+
+    const controller = isMercator
+      ? {
+          // Top-down 2D map. Pitch is locked to 0 so trajectory
+          // altitudes don't visually float above the surface — we want
+          // a flat ground track in this mode. Bearing also locked.
+          scrollZoom: { speed: 0.015, smooth: true },
+          minZoom: 0,
+          maxZoom: 14,
+          minPitch: 0,
+          maxPitch: 0,
+          dragRotate: false,
+        }
+      : {
+          // Custom controller config for GlobeView. Tight bounds on
+          // every axis the user can move along — _GlobeView's
+          // projection matrix gets singular near zoom 0, near pitch
+          // 90, and exactly at lat ±90, and any one of those three
+          // makes the planet vanish. We also disable drag-rotate
+          // (the bearing change gesture) entirely, because non-zero
+          // bearing combined with high latitude pushes the camera
+          // into a configuration where it ends up looking at the
+          // back side of the globe.
+          scrollZoom: { speed: 0.015, smooth: true },
+          minZoom: 0.5,
+          maxZoom: 10,
+          minPitch: 0,
+          maxPitch: 60,
+          dragRotate: false,
+        };
+
     const deck = new Deck({
       canvas,
-      views: new GlobeView({ id: 'globe', resolution: 12 }),
+      views: view,
       initialViewState: viewStateRef.current,
-      // Custom controller config. Tight bounds on every axis the
-      // user can move along — _GlobeView's projection matrix gets
-      // singular near zoom 0, near pitch 90, and exactly at lat ±90,
-      // and any one of those three makes the planet vanish. We also
-      // disable drag-rotate (the bearing change gesture) entirely,
-      // because non-zero bearing combined with high latitude pushes
-      // the camera into a configuration where it ends up looking at
-      // the back side of the globe.
-      controller: {
-        scrollZoom: { speed: 0.015, smooth: true },
-        minZoom: 0.5,
-        maxZoom: 10,
-        minPitch: 0,
-        maxPitch: 60,
-        dragRotate: false,
-      },
+      controller,
       // Render at 1 device pixel per CSS pixel instead of the
       // default `window.devicePixelRatio`. On a retina display
       // that's a 4× cut in pixel-shader work for every layer
@@ -746,12 +804,21 @@ const Map3D = forwardRef(function Map3D(
         //                       on the wrong side of the globe.
         const lat = Number.isFinite(viewState.latitude) ? viewState.latitude : 0;
         const pitch = Number.isFinite(viewState.pitch) ? viewState.pitch : 0;
-        const clamped = {
-          ...viewState,
-          latitude: Math.max(-65, Math.min(65, lat)),
-          pitch: Math.max(0, Math.min(60, pitch)),
-          bearing: 0,
-        };
+        const clamped = isMercator
+          ? {
+              ...viewState,
+              // Mercator can't render the poles (math goes singular at
+              // ±90). 85° on each side is the standard browser-map cap.
+              latitude: Math.max(-85, Math.min(85, lat)),
+              pitch: 0,
+              bearing: 0,
+            }
+          : {
+              ...viewState,
+              latitude: Math.max(-65, Math.min(65, lat)),
+              pitch: Math.max(0, Math.min(60, pitch)),
+              bearing: 0,
+            };
         viewStateRef.current = clamped;
         deck.setProps({ initialViewState: clamped });
       },
@@ -765,13 +832,23 @@ const Map3D = forwardRef(function Map3D(
     });
     deckRef.current = deck;
 
+    // Push the current static layer set into the new deck instance.
+    // Without this, after a projection toggle the new deck starts
+    // empty until something else triggers the layer-rebuild effect.
+    if (staticLayersRef.current.length || playbackLayersRef.current.length) {
+      deck.setProps({
+        layers: [...staticLayersRef.current, ...playbackLayersRef.current],
+      });
+    }
+
     return () => {
       try { deck.finalize(); } catch { /* ignore */ }
       try { canvas.remove(); } catch { /* ignore */ }
       deckRef.current = null;
       canvasRef.current = null;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMercator]);
 
   /* ── push layers + tooltip when they change ──────────────── */
   // Static layers come from the useMemo above (basemap, trajectory,

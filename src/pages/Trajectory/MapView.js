@@ -416,39 +416,19 @@ function MapView() {
     return t || d || null;
   }, [trackBounds, debrisFeatures.bounds]);
 
-  /* ── create the MapLibre instance once (Flat / Mercator only) ─ */
-  // The Globe view is handled by Map3D (deck.gl GlobeView). MapLibre
-  // here is locked to Mercator projection and renders only the
-  // surface ground track + native debris layers — no 3D arc.
-  useEffect(() => {
-    if (mapRef.current || !containerRef.current) return undefined;
-
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: TILE_STYLE,
-      projection: { type: 'mercator' },
-      center: [0, 20],
-      zoom: 1.0,
-      attributionControl: { compact: true },
-    });
-
-    map.addControl(new maplibregl.NavigationControl({
-      visualizePitch: true,
-      showZoom: true,
-      showCompass: true,
-    }), 'top-right');
-
-    map.on('style.load', () => {
-      styleLoadedRef.current = true;
-    });
-
-    mapRef.current = map;
-    return () => {
-      try { map.remove(); } catch { /* ignore */ }
-      mapRef.current = null;
-      styleLoadedRef.current = false;
-    };
-  }, []);
+  /* ── MapLibre disabled — Map3D handles both projections now ─── */
+  // Previously this effect spun up a MapLibre instance for the Flat
+  // mercator view, while Map3D handled Globe. MapLibre 5.x had cryptic
+  // production errors on Render's CDN ("o is not defined" from
+  // evented.ts) that we couldn't fix. Since deck.gl was already known
+  // to work for Globe, we extended Map3D to support mercator too and
+  // dropped MapLibre. Leaving `mapRef` permanently null causes all the
+  // other MapLibre-using effects below to short-circuit on their
+  // `if (!map) return` guards — no further changes needed there.
+  //
+  // (The MapLibre code path is intentionally left in place for now
+  // rather than ripped out wholesale, so a future deploy could restore
+  // it by simply re-enabling this effect. None of it executes today.)
 
   /* ── resize MapLibre when it comes back into view from globe ─ */
   // While the globe view is showing the MapLibre <div> is hidden via
@@ -969,21 +949,11 @@ function MapView() {
   // (The actual logic lives inside Map3D — this is just a hook.)
 
   /* ── handlers ─────────────────────────────────────────────── */
-  // Dispatchers — every camera-control button picks the right engine
-  // automatically based on the current projection mode.
+  // Camera-control dispatchers. Map3D handles both projections, so
+  // these no longer branch on projection mode.
   const fitTo = (bounds, maxZoom = 7) => {
     if (!bounds) return;
-    if (projection === 'globe') {
-      map3DRef.current?.fitToBounds(bounds, { maxZoom });
-      return;
-    }
-    const map = mapRef.current;
-    if (!map) return;
-    map.fitBounds(bounds, {
-      padding: { top: 80, bottom: 80, left: 80, right: 80 },
-      duration: 900,
-      maxZoom,
-    });
+    map3DRef.current?.fitToBounds(bounds, { maxZoom });
   };
   const fitToTrajectory = () => fitTo(trackBounds, 7);
   const fitToDebris     = () => fitTo(debrisFeatures.bounds, 13);
@@ -1009,27 +979,12 @@ function MapView() {
     const lat = row.mean_impact_lat ?? row.lat;
     const lon = row.mean_impact_lon ?? row.lon;
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-    if (projection === 'globe') {
-      map3DRef.current?.flyTo({ longitude: lon, latitude: lat, zoom: 9 });
-    } else if (mapRef.current) {
-      mapRef.current.flyTo({
-        center: [lon, lat],
-        zoom: 12,
-        duration: 1200,
-        essential: true,
-      });
-    }
+    map3DRef.current?.flyTo({ longitude: lon, latitude: lat, zoom: 9 });
   };
 
   const resetView = () => {
     setSelectedRow(null);
-    if (projection === 'globe') {
-      map3DRef.current?.reset();
-      return;
-    }
-    const map = mapRef.current;
-    if (!map) return;
-    map.flyTo({ center: [0, 20], zoom: 1.0, pitch: 0, bearing: 0, duration: 900 });
+    map3DRef.current?.reset();
   };
 
   /* ═══ Playback (rocket follow-cam) ════════════════════════════
@@ -1132,16 +1087,13 @@ function MapView() {
     // breath every ~1.7 s for a calm, deliberate beacon feel.
     const pulse = 1 + 0.18 * Math.sin(performance.now() / 280);
 
-    if (projection === 'globe') {
-      // Trail = the rocket's complete path so far, straight from the
-      // simulation. (No artificial cap — the data is correct, every
-      // sample shown is a real point the rocket actually passed
-      // through. Self-intersections at multi-orbit overlap are real.)
-      // GlobeView normalizes lon to a sphere position, so antimeridian
-      // crossings need no special handling here.
-      const trail = trajectory3D.slice(0, i0 + 1);
-      if (f > 0 && i0 < N - 1) trail.push([lon, lat, alt]);
+    // Map3D handles both projections — only difference is the camera
+    // pose (3D pitch+follow in globe, top-down at fixed zoom in
+    // mercator). The trail/rocket-overlay payload is identical.
+    const trail = trajectory3D.slice(0, i0 + 1);
+    if (f > 0 && i0 < N - 1) trail.push([lon, lat, alt]);
 
+    if (projection === 'globe') {
       // Smooth zoom toward the altitude target. Two-stage smoothing:
       //   (1) lerp at 12% per frame closes small gaps gracefully.
       //   (2) clamp the per-frame delta to ZOOM_MAX_DELTA so even a
@@ -1166,11 +1118,6 @@ function MapView() {
         pitch:     60,
         bearing:   smooth,
       });
-      map3DRef.current?.setPlaybackOverlay({
-        trail,
-        rocketPos: [lon, lat, alt],
-        pulse,
-      });
     } else {
       // 2D playback: hold the camera at a wide whole-world zoom so
       // the entire orbital ground track is visible at once. (We
@@ -1178,141 +1125,26 @@ function MapView() {
       // but at zoom ~1.5 you can see ~half the planet either way of
       // the rocket's current sub-point.) Bearing is locked to north
       // because rotation at wide zoom is disorienting.
-      const map = mapRef.current;
-      if (!map) return;
-
-      try {
-        map.jumpTo({
-          center: [lon, lat],
-          zoom: 1.5,
-          bearing: 0,
-        });
-      } catch { /* ignore */ }
-
-      const TRAIL_SRC        = 'playback-trail';
-      const TRAIL_GLOW_LAYER = 'playback-trail-glow';
-      const TRAIL_LAYER      = 'playback-trail-line';
-      const ROCKET_SRC       = 'playback-rocket';
-      const ROCKET_HALO2     = 'playback-rocket-halo2';
-      const ROCKET_HALO      = 'playback-rocket-halo';
-      const ROCKET_LAYER     = 'playback-rocket-dot';
-
-      // Trail line — re-uses existing source if any, otherwise creates
-      // it on first frame. Wrapped in try/catch so a style still
-      // loading mid-animation doesn't kill the whole tick.
-      const trailData = buildTrail2D(trackCoords, i0, [lon, lat]);
-      if (trailData) {
-        try {
-          if (map.getSource(TRAIL_SRC)) {
-            map.getSource(TRAIL_SRC).setData(trailData);
-          } else {
-            map.addSource(TRAIL_SRC, { type: 'geojson', data: trailData, lineMetrics: false });
-            // Same exact dimensions as the static blue track (which
-            // renders cleanly across antimeridian crossings) — just
-            // amber instead of blue. `line-cap: butt` is critical:
-            // with `round` and a wide blur radius, the round caps
-            // at every per-orbit segment endpoint stack up at the
-            // dateline and fuse into a fake vertical glow line.
-            map.addLayer({
-              id: TRAIL_GLOW_LAYER,
-              type: 'line',
-              source: TRAIL_SRC,
-              layout: { 'line-cap': 'butt', 'line-join': 'round' },
-              paint: {
-                'line-color': '#ffc864',
-                'line-width': 7,
-                'line-opacity': 0.32,
-                'line-blur': 3,
-              },
-            });
-            map.addLayer({
-              id: TRAIL_LAYER,
-              type: 'line',
-              source: TRAIL_SRC,
-              layout: { 'line-cap': 'butt', 'line-join': 'round' },
-              paint: {
-                'line-color': '#fff0b4',
-                'line-width': 2.2,
-                'line-opacity': 0.95,
-              },
-            });
-          }
-        } catch { /* ignore */ }
-      }
-
-      // Rocket marker — outer pulse, inner pulse, core dot.
-      const rocketData = {
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [lon, lat] },
-        properties: {},
-      };
-      try {
-        if (map.getSource(ROCKET_SRC)) {
-          map.getSource(ROCKET_SRC).setData(rocketData);
-        } else {
-          map.addSource(ROCKET_SRC, { type: 'geojson', data: rocketData });
-          map.addLayer({
-            id: ROCKET_HALO2,
-            type: 'circle',
-            source: ROCKET_SRC,
-            paint: {
-              'circle-radius': 22,
-              'circle-color': '#ffc864',
-              'circle-opacity': 0.18,
-              'circle-blur': 1,
-            },
-          });
-          map.addLayer({
-            id: ROCKET_HALO,
-            type: 'circle',
-            source: ROCKET_SRC,
-            paint: {
-              'circle-radius': 13,
-              'circle-color': '#ffd884',
-              'circle-opacity': 0.45,
-              'circle-blur': 0.6,
-            },
-          });
-          map.addLayer({
-            id: ROCKET_LAYER,
-            type: 'circle',
-            source: ROCKET_SRC,
-            paint: {
-              'circle-radius': 5.5,
-              'circle-color': '#fff5dc',
-              'circle-stroke-color': '#ffb04a',
-              'circle-stroke-width': 1.6,
-            },
-          });
-        }
-        // Apply the per-frame pulse to the two halo radii.
-        if (map.getLayer(ROCKET_HALO2)) {
-          map.setPaintProperty(ROCKET_HALO2, 'circle-radius', 22 * pulse);
-        }
-        if (map.getLayer(ROCKET_HALO)) {
-          map.setPaintProperty(ROCKET_HALO, 'circle-radius', 13 * pulse);
-        }
-      } catch { /* ignore */ }
+      map3DRef.current?.setPlaybackView({
+        longitude: lon,
+        latitude:  lat,
+        zoom:      1.5,
+        pitch:     0,
+        bearing:   0,
+      });
     }
+
+    map3DRef.current?.setPlaybackOverlay({
+      trail,
+      rocketPos: [lon, lat, alt],
+      pulse,
+    });
   }, [trajectory3D, trajectoryDist, trackCoords, projection]);
 
-  // Drop every overlay layer/source from both engines. Called when
-  // the user hits Stop, when projection switches, and on unmount.
+  // Drop the playback overlay from Map3D. Called on Stop / unmount /
+  // projection-switch.
   const clearPlaybackOverlays = useCallback(() => {
     map3DRef.current?.clearPlayback();
-    const map = mapRef.current;
-    if (map) {
-      PLAYBACK_2D_LAYERS.forEach((id) => {
-        if (map.getLayer(id)) {
-          try { map.removeLayer(id); } catch { /* ignore */ }
-        }
-      });
-      PLAYBACK_2D_SOURCES.forEach((id) => {
-        if (map.getSource(id)) {
-          try { map.removeSource(id); } catch { /* ignore */ }
-        }
-      });
-    }
   }, []);
 
   /* ── animation loop ───────────────────────────────────────── */
@@ -1391,28 +1223,13 @@ function MapView() {
     };
   }, [playState, playSpeed, applyPlaybackFrame, trajectory3D, trajectoryDist]);
 
-  // Wipe overlays whenever the user toggles between Globe and Flat
-  // mid-playback — the active engine changed, so the old layers are
-  // no longer relevant. We don't auto-pause; the next tick will
-  // repopulate the new engine's overlay.
+  // When the user toggles Globe ⇄ Flat mid-playback, Map3D rebuilds
+  // its deck.gl instance with the new view. We defer one frame so the
+  // new instance is mounted, then re-apply the current frame so the
+  // trail/rocket reappear on the new view immediately.
   useEffect(() => {
     if (playState === 'idle') return;
-    // Defer one frame so the engine swap has a chance to mount/show.
     const id = window.requestAnimationFrame(() => {
-      // Clear stale overlays from the engine we just switched away from.
-      if (projection === 'globe') {
-        const map = mapRef.current;
-        if (map) {
-          PLAYBACK_2D_LAYERS.forEach((lid) => {
-            if (map.getLayer(lid)) { try { map.removeLayer(lid); } catch {} }
-          });
-          PLAYBACK_2D_SOURCES.forEach((sid) => {
-            if (map.getSource(sid)) { try { map.removeSource(sid); } catch {} }
-          });
-        }
-      } else {
-        map3DRef.current?.clearPlayback();
-      }
       applyPlaybackFrame(playProgressRef.current);
     });
     return () => window.cancelAnimationFrame(id);
@@ -1436,24 +1253,15 @@ function MapView() {
       // start, which would briefly show in-between pyramid levels.
       zoomSmoothRef.current = 6;
       if (launchSite) {
-        if (projection === 'globe') {
-          // Fly in at the same zoom the playback frames will use
-          // immediately after — eliminates a 11→3 pyramid sweep on
-          // the first second of every play.
-          map3DRef.current?.flyTo({
-            longitude: launchSite[0],
-            latitude:  launchSite[1],
-            zoom:      6,
-            pitch:     60,
-          });
-        } else {
-          mapRef.current?.flyTo({
-            center: launchSite,
-            zoom: 5,
-            duration: 600,
-            essential: true,
-          });
-        }
+        // Fly in at the same zoom the playback frames will use
+        // immediately after — eliminates a pyramid-level sweep on
+        // the first second of every play.
+        map3DRef.current?.flyTo({
+          longitude: launchSite[0],
+          latitude:  launchSite[1],
+          zoom:      projection === 'globe' ? 6 : 1.5,
+          pitch:     projection === 'globe' ? 60 : 0,
+        });
       }
     }
     setPlayState('playing');
@@ -1675,13 +1483,10 @@ function MapView() {
           </Section>
         </aside>
 
-        {/* Map canvas — both engines stay mounted in the same wrap.
-            MapLibre is hidden via `display: none` when in Globe mode;
-            Map3D is hidden via `visibility: hidden` when in Flat mode.
-            Why keep both alive? deck.gl's WebGL context + tile cache
-            only pay their ~1s setup once, so toggling Globe ⇄ Flat
-            after that is instantaneous instead of cold-starting the
-            whole stack each time. */}
+        {/* Map canvas — single deck.gl-based component handles both
+            Globe (3D) and Flat (mercator 2D) modes via its `projection`
+            prop. The deck instance is rebuilt when the user flips the
+            Globe/Flat radio (cheap because tiles are HTTP-cached). */}
         <section className="MV-canvas-wrap">
           {empty ? (
             <div className="MV-empty">
@@ -1693,14 +1498,10 @@ function MapView() {
             </div>
           ) : (
             <>
-              <div
-                ref={containerRef}
-                className="MV-canvas"
-                style={{ display: projection === 'mercator' ? 'block' : 'none' }}
-              />
               <Map3D
                 ref={map3DRef}
-                visible={projection === 'globe'}
+                visible
+                projection={projection}
                 trajectory3D={trajectory3D}
                 debrisFeatures={debrisFeatures}
                 launchSite={launchSite}
@@ -1709,8 +1510,9 @@ function MapView() {
                    or paused — at self-intersections it overlaps the
                    live orange trace and makes it look like the
                    rocket "jumped" arms. Stop puts state back to
-                   'idle' and the full arc reappears. */
-                showAltitude={showAltitude && playState === 'idle'}
+                   'idle' and the full arc reappears. Also honour the
+                   user's "Show track" toggle in the sidebar. */
+                showAltitude={showAltitude && showTrack && playState === 'idle'}
                 showOrigins={showOrigins && !!debrisFeatures.origins}
                 showImpacts={showImpacts && !!debrisFeatures.impacts}
                 showEllipses={showEllipses && !!debrisFeatures.ellipses}
