@@ -48,36 +48,38 @@ import {
  *   .clearPlayback()
  */
 
-// EOX Sentinel-2 cloudless 2020 — modern (cloud-removed mosaic of
-// Sentinel-2 satellite imagery) with a fast Cloudflare CDN. Free
-// for non-commercial use; attribution required.
-//
-// We previously used ArcGIS World Imagery, which looked great but
-// has a slower per-tile origin response — noticeable as lag while
-// the camera moves during playback. EOX's CDN is consistently
-// faster.
-//
-// We darken / warm-tint the imagery via `BitmapLayer.tintColor` (in
-// the shader, one-time per tile) instead of the previous CSS
-// `filter` on the canvas — a CSS filter recomposites the entire
-// frame on every redraw and is the single largest GPU cost during
-// playback for a deck.gl scene.
+// Globe basemap — EOX Sentinel-2 cloudless 2020. Photographic
+// satellite imagery (cloud-removed Sentinel-2 mosaic) with a fast
+// Cloudflare CDN, free for non-commercial use, attribution required.
+// We darken / warm-tint via `BitmapLayer.tintColor` so the planet
+// sits comfortably in the dark UI without a per-frame CSS filter.
 const TILE_URL_BASE =
   'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g';
 const TILE_URL_EXT = '.jpg';
-const TILE_URL = `${TILE_URL_BASE}/{z}/{y}/{x}${TILE_URL_EXT}`;
-// 10 is plenty for orbit-scale trajectory work — anything sharper
-// is "staring at a single field" territory and just spawns more
-// pyramid levels to fetch. Lower max ⇒ noticeably faster first
-// paint and lower steady-state network use during playback.
-const TILE_MAX_ZOOM = 10;
+const TILE_URL_GLOBE = `${TILE_URL_BASE}/{z}/{y}/{x}${TILE_URL_EXT}`;
+
+// Mercator basemap — CARTO Dark Matter (raster).
+// Why a different source for 2D? A flat top-down map is the natural
+// place to read country borders, city labels, ocean names, etc.
+// CARTO's Dark Matter is a dark cartographic style with all those
+// labels baked in, dark enough to match the rest of the app.
+// Free for non-commercial use; attribution required.
+const TILE_URL_MERCATOR =
+  'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png';
+
+// 10 is plenty for orbit-scale globe work; mercator can go further
+// (zoom 14 ≈ city block) since flat maps are also useful for
+// inspecting impact dispersion at the regional scale.
+const TILE_MAX_ZOOM_GLOBE = 10;
+const TILE_MAX_ZOOM_MERCATOR = 14;
 const TILE_MAX_REQUESTS = 12;
 const TILE_MAX_CACHE = 512;
-// Slight warm darkening multiplied into every basemap tile in the
-// shader. Keeps the planet sitting comfortably inside the dark UI
-// without paying the cost of a per-frame CSS canvas filter.
+// Slight warm darkening multiplied into every Sentinel-2 tile.
+// CARTO Dark Matter is already dark + flat-toned, so we don't tint
+// it — applying TILE_TINT to those tiles washes the labels out.
 const TILE_TINT = [216, 210, 200];
-const TILE_ATTRIBUTION = 'Sentinel-2 cloudless · EOX IT Services GmbH';
+const TILE_ATTRIBUTION_GLOBE = 'Sentinel-2 cloudless · EOX IT Services GmbH';
+const TILE_ATTRIBUTION_MERCATOR = '© CARTO · © OpenStreetMap contributors';
 
 /**
  * Split a 3D path `[[lon, lat, alt], …]` into multiple sub-paths
@@ -415,9 +417,12 @@ const Map3D = forwardRef(function Map3D(
       // their sharper neighbors are still on the wire (instead of a
       // blank planet for two seconds).
       new TileLayer({
-        id: 'basemap',
-        data: TILE_URL,
-        maxZoom: TILE_MAX_ZOOM,
+        // `id` includes the projection so deck.gl invalidates and
+        // re-fetches the basemap when the user toggles Globe ⇄ Flat
+        // (different tile URL → different cache space).
+        id: isMercator ? 'basemap-mercator' : 'basemap-globe',
+        data: isMercator ? TILE_URL_MERCATOR : TILE_URL_GLOBE,
+        maxZoom: isMercator ? TILE_MAX_ZOOM_MERCATOR : TILE_MAX_ZOOM_GLOBE,
         minZoom: 0,
         tileSize: 256,
         maxRequests: TILE_MAX_REQUESTS,
@@ -433,8 +438,9 @@ const Map3D = forwardRef(function Map3D(
             bounds: [w, s, e, n],
             // Shader-side tint replaces the old CSS filter on the
             // canvas — same look, but evaluated once per tile vertex
-            // instead of every frame for the whole viewport.
-            tintColor: TILE_TINT,
+            // instead of every frame for the whole viewport. Skip the
+            // tint in mercator so country/city labels stay readable.
+            tintColor: isMercator ? [255, 255, 255] : TILE_TINT,
           });
         },
       }),
@@ -905,7 +911,9 @@ const Map3D = forwardRef(function Map3D(
           separate from the React-managed siblings (stars, attribution)
           so React's reconciler never tries to remove the canvas. */}
       <div ref={containerRef} className="MV-canvas-3d-mount" />
-      <span className="MV-attrib mono" aria-hidden>{TILE_ATTRIBUTION}</span>
+      <span className="MV-attrib mono" aria-hidden>
+        {isMercator ? TILE_ATTRIBUTION_MERCATOR : TILE_ATTRIBUTION_GLOBE}
+      </span>
     </div>
   );
 });
