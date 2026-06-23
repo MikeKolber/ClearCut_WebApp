@@ -47,6 +47,14 @@ services:
     startCommand: gunicorn -w 1 --threads 4 --timeout 120 -b 0.0.0.0:$PORT app:app
     healthCheckPath: /api/ping
     envVars:
+      # Pin Python to 3.12. Render's auto-detected default has been
+      # 3.14, where the scientific stack still has rough edges (e.g.
+      # pyatmos imports pkg_resources, which 3.12+ no longer ships
+      # by default unless setuptools is installed explicitly). 3.12
+      # is the most-tested Python for the trajectory engine.
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+
       # Cookie-signing key — Render auto-generates 32 random bytes once,
       # then keeps the same value across redeploys. Safe to ship.
       - key: CC_SECRET_KEY

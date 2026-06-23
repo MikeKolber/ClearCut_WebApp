@@ -114,6 +114,16 @@
   color: var(--text-secondary);
   letter-spacing: 0.01em;
   line-height: 1.5;
+  /* Preserve newlines from Python tracebacks AND wrap long file paths
+     (which have no spaces and would otherwise overflow). For really
+     long backend errors we cap height + show a scroll bar inside the
+     toast rather than letting the toast itself grow to fill the
+     viewport. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .error-toast-x {
