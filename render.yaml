@@ -35,7 +35,12 @@ services:
     # Install both requirement files — backend/ has just the web/auth
     # deps; the heavy scientific stack (pandas, scipy, pyproj, plotly,
     # numba, etc.) lives with the calculation engines.
-    buildCommand: pip install -r requirements.txt && pip install -r ../physics_engines/core/requirements.txt
+    #
+    # Upgrading pip + setuptools + wheel FIRST is required: Python 3.12's
+    # venv module no longer auto-installs setuptools, and pyatmos still
+    # imports `pkg_resources` (from setuptools). Without this prelude,
+    # the simulation crashes with ModuleNotFoundError: pkg_resources.
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install -r requirements.txt && pip install -r ../physics_engines/core/requirements.txt
     # 1 process, 4 threads, 120-second timeout.
     #
     # Single-worker is REQUIRED here — `_active_runs` (the trajectory
