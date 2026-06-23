@@ -36,8 +36,15 @@ services:
     # deps; the heavy scientific stack (pandas, scipy, pyproj, plotly,
     # numba, etc.) lives with the calculation engines.
     buildCommand: pip install -r requirements.txt && pip install -r ../physics_engines/core/requirements.txt
-    # 2 worker processes, 120-second timeout (room for long TDMS parses).
-    startCommand: gunicorn -w 2 --timeout 120 -b 0.0.0.0:$PORT app:app
+    # 1 process, 4 threads, 120-second timeout.
+    #
+    # Single-worker is REQUIRED here — `_active_runs` (the trajectory
+    # / debris run registry) is in-memory per Python process. With
+    # multiple workers, a POST that creates a run in worker A's
+    # memory would 404 when its polling GET hits worker B.
+    # Threads share that memory, so 4 threads gives us ~4 concurrent
+    # users with no run-tracking surprises.
+    startCommand: gunicorn -w 1 --threads 4 --timeout 120 -b 0.0.0.0:$PORT app:app
     healthCheckPath: /api/ping
     envVars:
       # Cookie-signing key — Render auto-generates 32 random bytes once,
