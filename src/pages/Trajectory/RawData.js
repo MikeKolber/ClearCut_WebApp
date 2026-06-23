@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import TopBar from '../../components/TopBar/TopBar';
 import { JumpTabs, getJumpTabs, LiveSimBadge } from './JumpTabs';
 import {
+  API_BASE,
   loadTrajectoryRawAll,
   trajectoryDownloadUrl,
   downloadFromBackend,
@@ -123,7 +124,12 @@ function RawData() {
       try {
         // Use fetch + ReadableStream so we can show a progress bar
         // while the binary buffer arrives (could be 30-300 MB).
-        const res = await fetch('/api/trajectory/output/raw/all', {
+        // IMPORTANT: prepend API_BASE so this fetch goes directly to the
+        // backend in production (REACT_APP_API_BASE=https://...backend...).
+        // A bare relative path would route through the static site, which
+        // 401s cross-origin via the auth gate and triggers cc:auth-expired,
+        // logging the user out the moment they open the Raw Data tab.
+        const res = await fetch(`${API_BASE}/api/trajectory/output/raw/all`, {
           credentials: 'include',
         });
         if (!res.ok) {

@@ -5,7 +5,7 @@
  * http://localhost:5001 (see "proxy" in package.json), so relative paths work.
  */
 
-const API_BASE = process.env.REACT_APP_API_BASE || '';
+export const API_BASE = process.env.REACT_APP_API_BASE || '';
 
 /* Paths the auth gate should NOT trigger a redirect for. A 401 from
    /api/auth/whoami is the *expected* "not logged in" signal during the
