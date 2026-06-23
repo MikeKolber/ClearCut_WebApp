@@ -5,7 +5,8 @@ bcrypt>=4.0
 boto3>=1.34
 numpy>=1.24
 nptdms>=1.9
-# Python 3.12+ doesn't ship pkg_resources by default. pyatmos (and a few
-# other older scientific deps) still import it, so we install setuptools
-# explicitly to make pkg_resources available.
-setuptools>=68
+# pyatmos (used by the trajectory simulation's COESA76 atmosphere model)
+# still imports `pkg_resources`. setuptools shipped pkg_resources for
+# years, but officially removed it in v80 (April 2025). Pin <80 so the
+# import keeps working until pyatmos migrates to importlib.resources.
+setuptools>=68,<80
