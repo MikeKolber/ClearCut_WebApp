@@ -99,11 +99,13 @@ services:
       # one origin (this static site's), so cookies are same-origin
       # and SameSite=Strict works perfectly.
       #
-      # If Render renames the backend service (e.g. because the name
-      # was taken), update the destination URL below to match.
+      # The `-lw1r` suffix is what Render assigned because plain
+      # `clearcut-backend` was already taken globally on the platform.
+      # If you ever recreate the backend service and Render gives it
+      # a different suffix, update this URL to match.
       - type: rewrite
         source: /api/*
-        destination: https://clearcut-backend.onrender.com/api/:splat
+        destination: https://clearcut-backend-lw1r.onrender.com/api/:splat
 
       # SPA fallback — any non-/api/ path that isn't a real built file
       # falls through to index.html so React-Router can handle it.
