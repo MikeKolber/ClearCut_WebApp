@@ -2210,13 +2210,13 @@
   transform: rotate(-22deg) translateY(-1px);
 }
 
-/* ─── Save Simulation button ───────────────────────────────────
-   Twin to .TR-rocket-btn but tinted in the accent blue rather
-   than payload-gold, so the two footer buttons read as a balanced
-   pair (one for inspecting the rocket, one for archiving the run).
-   Identical metrics — same height, padding, radius, font — so they
-   sit on the same horizontal baseline regardless of which one is
-   wider. */
+/* ─── Save Simulation / Download CSV button ───────────────────
+   Twin to .TR-rocket-btn (same pill shape, same metrics) but
+   neutral-grey so it pairs visually with the Load Simulation /
+   Load Debris / Compare row above. Used for both "Save Simulation"
+   and "Download CSV" — they're both secondary archive/export
+   actions and shouldn't compete with the gold "View 3D Structure"
+   button next to them. */
 .TR-save-sim-btn {
   appearance: none;
   display: inline-flex;
@@ -2227,12 +2227,9 @@
   font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0.4px;
-  color: var(--accent, #4DA8DA);
-  background:
-    linear-gradient(180deg,
-      rgba(77, 168, 218, 0.08) 0%,
-      rgba(77, 168, 218, 0.02) 100%);
-  border: 1px solid rgba(77, 168, 218, 0.32);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: 999px;
   cursor: pointer;
   transition:
@@ -2243,17 +2240,18 @@
     box-shadow 160ms ease;
 }
 .TR-save-sim-btn:hover {
-  color: #82c8e8;
-  background:
-    linear-gradient(180deg,
-      rgba(77, 168, 218, 0.16) 0%,
-      rgba(77, 168, 218, 0.06) 100%);
-  border-color: rgba(77, 168, 218, 0.62);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-strong);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px -8px rgba(77, 168, 218, 0.55);
 }
 .TR-save-sim-btn:active {
   transform: translateY(0);
+}
+.TR-save-sim-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
 }
 
 .TR-save-sim-btn-label {

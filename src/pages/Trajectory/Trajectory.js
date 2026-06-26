@@ -2950,7 +2950,9 @@ function ResultsBlock({
         {/* Download companion to Save Simulation. Save Simulation
             puts the run into the team library on the server;
             Download saves the same CSV onto the user's own computer
-            (browser save-as / Downloads folder per OS settings). */}
+            (browser save-as / Downloads folder per OS settings).
+            Uses the same neutral-grey pill styling as Save Simulation
+            so the two read as a balanced pair. */}
         <Tooltip
           text={
             'Download this run as a CSV file to your computer.\n' +
@@ -2961,12 +2963,12 @@ function ResultsBlock({
         >
           <button
             type="button"
-            className="TR-rocket-btn"
+            className="TR-save-sim-btn"
             onClick={() => onDownloadSimulation && onDownloadSimulation('csv')}
             disabled={!onDownloadSimulation}
           >
-            <span className="TR-rocket-btn-label" aria-hidden="true">↓</span>
-            <span className="TR-rocket-btn-label">Download CSV</span>
+            <span className="TR-save-sim-btn-label" aria-hidden="true">↓</span>
+            <span className="TR-save-sim-btn-label">Download CSV</span>
           </button>
         </Tooltip>
       </div>
