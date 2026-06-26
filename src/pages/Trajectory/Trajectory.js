@@ -26,7 +26,10 @@ import {
   loadSimulationFile,
   loadDebrisRun,
   saveCurrentSimulation,
+  trajectoryDownloadUrl,
+  downloadFromBackend,
 } from '../../services/api';
+import { downloadJson, slugifyFilename } from '../../utils/download';
 import {
   PlotPreview,
   DebrisPreview,
@@ -486,6 +489,26 @@ function Trajectory() {
     if (saved?.saved_name) setPresetName(saved.saved_name);
   }, [params, refreshUserPresets]);
 
+  /* ── Download a local copy of the trajectory preset JSON ──────
+   * Companion to handleSavePreset above. "Save as Preset" puts the
+   * file into the shared team library on the server; "Download"
+   * gives the user a .json on their own computer (browser handles
+   * the save-as dialog / Downloads folder per their OS settings).
+   * Same shape, same data — just two destinations.
+   */
+  const handleDownloadPreset = useCallback(() => {
+    const inc = params?.desired_inclination;
+    const orbH = params?.desired_orbit_height;
+    const suggested =
+      Number.isFinite(inc) && Number.isFinite(orbH)
+        ? `${Math.round(inc)}-${Math.round(orbH)}`
+        : 'trajectory-preset';
+    const raw = window.prompt('Download preset as filename:', suggested);
+    const name = (raw || '').trim();
+    if (!name) return;
+    downloadJson(`clearcut-${slugifyFilename(name)}.json`, params);
+  }, [params]);
+
   /* ── Debris preset loading + saving ──────────────────────────── */
   // Same shape as the trajectory preset flow above, but reads/writes
   // from `json_files/debris_presets/` on the backend. 'Custom' means
@@ -560,6 +583,16 @@ function Trajectory() {
     await refreshUserDebrisPresets();
     if (saved?.saved_name) setDebrisPresetName(saved.saved_name);
   }, [debrisParams, debrisMode, customPoints, refreshUserDebrisPresets]);
+
+  /* ── Download a local copy of the debris preset JSON ─────────
+   * Same idea as handleDownloadPreset above, but for the debris tab.
+   */
+  const handleDownloadDebrisPreset = useCallback(() => {
+    const raw = window.prompt('Download debris preset as filename:', 'debris-preset');
+    const name = (raw || '').trim();
+    if (!name) return;
+    downloadJson(`clearcut-debris-${slugifyFilename(name)}.json`, debrisParams);
+  }, [debrisParams]);
 
   /* ── Preset deletion (trajectory + debris) ─────────────────────────
      PresetPicker enters select-mode and emits the chosen names; we
@@ -751,6 +784,36 @@ function Trajectory() {
       }
     }
   }, [presetName, params]);
+
+  /* ── Download the current simulation output as a CSV/XLSX ────
+   * Sister action to handleSaveSimulation. Save Simulation pushes
+   * the current run into the team library on the server; Download
+   * Simulation hands the user the same data as a file on their own
+   * computer (browser save-as / Downloads folder per OS settings).
+   *
+   * Uses the existing `/api/trajectory/output/download` endpoint
+   * via the api.js helper — same path Raw Data uses for its
+   * download button, so format support and filename handling are
+   * already battle-tested.
+   */
+  const handleDownloadSimulation = useCallback(async (format = 'csv') => {
+    const fmt = format === 'xlsx' ? 'xlsx' : 'csv';
+    try {
+      await downloadFromBackend(
+        trajectoryDownloadUrl(fmt),
+        // Suggested name; the backend's Content-Disposition wins
+        // if it sends one. We pass our own to cover the case where
+        // it doesn't.
+        `simulation_output.${fmt}`,
+      );
+    } catch (err) {
+      setRunError({
+        kind: 'runtime',
+        title: 'Could not download simulation',
+        details: [err.message || String(err)],
+      });
+    }
+  }, []);
 
   const handleLoadDebris = useCallback(() => {
     setLoadDebrisOpen(true);
@@ -1178,6 +1241,7 @@ function Trajectory() {
                     presetName={presetName}
                     onLoadPreset={loadPreset}
                     onSavePreset={handleSavePreset}
+                    onDownloadPreset={handleDownloadPreset}
                     onClear={clearTrajectoryParams}
                     presets={allPresets}
                     deletablePresetNames={userPresets}
@@ -1193,6 +1257,7 @@ function Trajectory() {
                     presetName={debrisPresetName}
                     onLoadPreset={loadDebrisPreset}
                     onSavePreset={handleSaveDebrisPreset}
+                    onDownloadPreset={handleDownloadDebrisPreset}
                     presets={userDebrisPresets}
                     customPoints={customPoints}
                     setCustomPoints={setCustomPoints}
@@ -1279,6 +1344,7 @@ function Trajectory() {
               debrisDone={debrisDoneInSession}
               onOpenDebris={openDebrisFromCard}
               onSaveSimulation={handleSaveSimulation}
+              onDownloadSimulation={handleDownloadSimulation}
             />
           )}
         </section>
@@ -1376,7 +1442,8 @@ function SidebarHeader({ tab, onTabChange, onToggle }) {
 
 function ParamsTab({
   params, setParam, setStageParam, activeStage, setActiveStage,
-  noOfStages, presetName, onLoadPreset, onSavePreset, onClear, presets,
+  noOfStages, presetName, onLoadPreset, onSavePreset, onDownloadPreset,
+  onClear, presets,
   /* `deletablePresetNames` is the map of user-saved presets (keys =
      deletable names). `onDeletePresets(names[])` is the parent action. */
   deletablePresetNames = null, onDeletePresets = null,
@@ -1497,6 +1564,19 @@ function ParamsTab({
             Save as Preset
           </button>
         </Tooltip>
+        {/* Download companion — same params as the Save, but saved
+            to the user's own computer (browser save-as / Downloads
+            folder) instead of the team's shared server library. */}
+        <button
+          type="button"
+          className="TR-btn-clear"
+          onClick={onDownloadPreset}
+          disabled={!onDownloadPreset}
+          title="Download these parameters as a .json file to your computer"
+        >
+          <span className="TR-btn-clear-icon" aria-hidden="true">↓</span>
+          Download
+        </button>
         <button
           type="button"
           className="TR-btn-clear"
@@ -1942,7 +2022,8 @@ function PresetPicker({
 function DebrisTab({
   params, setParam, mode, setMode, customPoints, setCustomPoints, onClear,
   trajectoryDone = false,
-  presetName = 'Custom', onLoadPreset, onSavePreset, presets = {},
+  presetName = 'Custom', onLoadPreset, onSavePreset, onDownloadPreset,
+  presets = {},
   /* All debris presets are user-saved (no hardcoded ones), so the
      deletable set is just the presets map's keys. */
   deletablePresetNames = null, onDeletePresets = null,
@@ -2092,6 +2173,17 @@ function DebrisTab({
           title="Save the current debris parameters as a named preset"
         >
           Save as Preset
+        </button>
+        {/* Download companion — see ParamsTab's footer comment. */}
+        <button
+          type="button"
+          className="TR-btn-clear"
+          onClick={onDownloadPreset}
+          disabled={!onDownloadPreset}
+          title="Download these parameters as a .json file to your computer"
+        >
+          <span className="TR-btn-clear-icon" aria-hidden="true">↓</span>
+          Download
         </button>
         <button
           type="button"
@@ -2704,6 +2796,7 @@ function ResultsBlock({
   debrisDone = false,
   onOpenDebris,
   onSaveSimulation,
+  onDownloadSimulation,
 }) {
   const navigate = useNavigate();
   // The "Results Folder" card opens an in-app file browser modal —
@@ -2852,6 +2945,28 @@ function ResultsBlock({
           >
             <SaveGlyph />
             <span className="TR-save-sim-btn-label">Save Simulation</span>
+          </button>
+        </Tooltip>
+        {/* Download companion to Save Simulation. Save Simulation
+            puts the run into the team library on the server;
+            Download saves the same CSV onto the user's own computer
+            (browser save-as / Downloads folder per OS settings). */}
+        <Tooltip
+          text={
+            'Download this run as a CSV file to your computer.\n' +
+            'Browser will offer a save-as dialog or save to your\n' +
+            'Downloads folder.'
+          }
+          placement="top"
+        >
+          <button
+            type="button"
+            className="TR-rocket-btn"
+            onClick={() => onDownloadSimulation && onDownloadSimulation('csv')}
+            disabled={!onDownloadSimulation}
+          >
+            <span className="TR-rocket-btn-label" aria-hidden="true">↓</span>
+            <span className="TR-rocket-btn-label">Download CSV</span>
           </button>
         </Tooltip>
       </div>
