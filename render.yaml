@@ -42,6 +42,18 @@ services:
     # which pyatmos still imports. Without this prelude, the simulation
     # crashes with ModuleNotFoundError: pkg_resources.
     buildCommand: pip install --upgrade pip wheel && pip install 'setuptools>=68,<80' && pip install -r requirements.txt && pip install -r ../physics_engines/core/requirements.txt
+    # Persistent disk — survives redeploys + restarts. Holds:
+    #   /var/data/shared/        Saved presets + saved simulations
+    #                            (shared library, visible to everyone)
+    #   /var/data/sessions/<sid>/  Per-browser "current run" workspace
+    #                              so two coworkers don't see each
+    #                              other's live trajectory output.
+    # 1 GB is plenty — JSON presets are tiny, saved sims are ~100 MB
+    # each so this fits ~9 of them comfortably plus a hundred presets.
+    disk:
+      name: clearcut-data
+      mountPath: /var/data
+      sizeGB: 1
     # 1 process, 4 threads, 120-second timeout.
     #
     # Single-worker is REQUIRED here — `_active_runs` (the trajectory
@@ -60,6 +72,14 @@ services:
       # is the most-tested Python for the trajectory engine.
       - key: PYTHON_VERSION
         value: "3.12.7"
+
+      # Point user-writable data at the persistent disk mounted above.
+      # Two trees inside:  shared/  (preset + saved-sim library, all
+      # users see)  and  sessions/<sid>/  (live current-run workspace,
+      # private per browser session — so coworkers don't overwrite
+      # each other's plots when they run sims at the same time).
+      - key: CC_DATA_DIR
+        value: /var/data
 
       # Cookie-signing key — Render auto-generates 32 random bytes once,
       # then keeps the same value across redeploys. Safe to ship.

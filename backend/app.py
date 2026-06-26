@@ -54,8 +54,101 @@ _PBS_ROOT = _REPO_ROOT / "physics_engines" / "core" / "PBS"
 _ENGINE_TESTS_ROOT = _REPO_ROOT / "physics_engines" / "core" / "Engine Tests"
 _ENGINE_TESTS_DATA = _ENGINE_TESTS_ROOT / "data"
 _TRAJ_ROOT = _REPO_ROOT / "physics_engines" / "core" / "Trajectory Simulation"
-_TRAJ_OUTPUT = _TRAJ_ROOT / "output"
-_DEBRIS_DATA = _TRAJ_ROOT / "debris_data"
+
+# ---------------------------------------------------------------------------
+# User data root — set CC_DATA_DIR in production to point at a persistent
+# disk (Render attaches one at /var/data). Locally we default to the
+# in-repo Trajectory Simulation folder so dev paths look like they
+# always have. Two top-level subtrees inside CC_DATA_DIR:
+#
+#   shared/    Library of saved presets + saved simulations, visible
+#              to every logged-in coworker. Persists across redeploys.
+#
+#   sessions/<sid>/    Private "current run" workspace for one browser
+#              session. Live simulation output, debris runs, sketch,
+#              TVC aero data. Each login mints its own sid so two
+#              coworkers don't see each other's in-progress sims.
+#
+# Bundled presets (the ones shipped in git under physics_engines/...)
+# are seeded into `shared/presets/` etc. on first boot so the team's
+# starter library is always present even on a brand-new disk.
+# ---------------------------------------------------------------------------
+_DATA_ROOT = Path(os.environ.get("CC_DATA_DIR", str(_TRAJ_ROOT))).resolve()
+_SHARED_ROOT = _DATA_ROOT / "shared"
+_SESSIONS_ROOT = _DATA_ROOT / "sessions"
+
+# Shared (cross-session) directories
+_TRAJ_PRESETS_DIR = _SHARED_ROOT / "presets"
+_TRAJ_DEBRIS_PRESETS_DIR = _SHARED_ROOT / "debris_presets"
+_TRAJ_PRELOADED_DIR = _SHARED_ROOT / "pre_loaded"
+
+# Make sure the top-level dirs exist at boot.
+for _p in (_SHARED_ROOT, _SESSIONS_ROOT, _TRAJ_PRESETS_DIR,
+           _TRAJ_DEBRIS_PRESETS_DIR, _TRAJ_PRELOADED_DIR):
+    try:
+        _p.mkdir(parents=True, exist_ok=True)
+    except OSError as _exc:
+        print(f"[clearcut-data] could not create {_p}: {_exc}",
+              file=sys.stderr, flush=True)
+
+
+def _session_root(sid: str | None = None) -> Path:
+    """Return the per-session workspace directory, creating it lazily."""
+    if sid is None:
+        sid = _current_sid()
+    out = _SESSIONS_ROOT / sid
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _session_output_dir(sid: str | None = None) -> Path:
+    """Where the trajectory simulation writes simulation_output.csv etc."""
+    d = _session_root(sid) / "output"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _session_debris_dir(sid: str | None = None) -> Path:
+    """Where the debris analysis spawns its per-run subfolders."""
+    d = _session_root(sid) / "debris_runs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _session_current_json(sid: str | None = None) -> Path:
+    """The session's most-recent params snapshot (was `json_files/_current.json`)."""
+    return _session_root(sid) / "current.json"
+
+
+def _seed_shared_from_repo() -> None:
+    """First-boot seed: if the shared preset directories are empty (fresh
+    disk), copy the bundled presets shipped in the repo into them so the
+    team starts with their library available. Idempotent — re-runs after
+    the disk already has data are no-ops."""
+    import shutil
+    for src_dir, dst_dir in (
+        (_TRAJ_ROOT / "json_files" / "presets",         _TRAJ_PRESETS_DIR),
+        (_TRAJ_ROOT / "json_files" / "debris_presets",  _TRAJ_DEBRIS_PRESETS_DIR),
+    ):
+        if not src_dir.is_dir():
+            continue
+        # Only seed if the destination is empty — never overwrite a
+        # preset a coworker has edited.
+        try:
+            existing = any(dst_dir.iterdir())
+        except OSError:
+            existing = True
+        if existing:
+            continue
+        for f in src_dir.glob("*.json"):
+            try:
+                shutil.copy2(f, dst_dir / f.name)
+            except OSError as _exc:
+                print(f"[clearcut-data] could not seed preset {f.name}: {_exc}",
+                      file=sys.stderr, flush=True)
+
+
+_seed_shared_from_repo()
 
 # Decimation cap for plot data. Higher than the desktop's 5000 to give the
 # user more confidence that fast features aren't being smoothed away —
@@ -231,17 +324,30 @@ def _serializer() -> URLSafeTimedSerializer:
 
 
 def _issue_token(username: str) -> str:
-    return _serializer().dumps({"u": username})
+    """Mint a new session token. Each login gets a fresh `sid` so the
+    backend can scope per-session state (live trajectory output, etc.)
+    to one browser at a time — two coworkers sharing the same login
+    still get separate sessions because each login mints its own sid."""
+    sid = secrets.token_urlsafe(12)
+    return _serializer().dumps({"u": username, "sid": sid})
 
 
-def _validate_token(token: str) -> str | None:
+def _validate_token(token: str) -> dict | None:
+    """Return `{"u": username, "sid": session-id}` for a valid token,
+    or None if the signature is bad or the cookie has expired.
+
+    Backward-compat: very old cookies issued before the sid field was
+    added are still accepted; they get assigned a synthetic
+    "_legacy" sid so per-session paths still resolve (they all share
+    one bucket, which means they still see each other's live runs —
+    but they only need to log out + back in once to get separated)."""
     try:
         data = _serializer().loads(token, max_age=CC_SESSION_HOURS * 3600)
     except (BadSignature, SignatureExpired):
         return None
-    if isinstance(data, dict):
-        return data.get("u")
-    return None
+    if not isinstance(data, dict) or "u" not in data:
+        return None
+    return {"u": data["u"], "sid": data.get("sid", "_legacy")}
 
 
 def _check_credentials(username: str, password: str) -> bool:
@@ -263,9 +369,24 @@ def _check_credentials(username: str, password: str) -> bool:
         return False
 
 
-def _current_user() -> str | None:
+def _current_session() -> dict | None:
+    """Return `{"u": username, "sid": session-id}` for the request's
+    cookie, or None if missing/invalid."""
     token = request.cookies.get(_AUTH_COOKIE_NAME)
     return _validate_token(token) if token else None
+
+
+def _current_user() -> str | None:
+    sess = _current_session()
+    return sess["u"] if sess else None
+
+
+def _current_sid() -> str:
+    """Session id from the auth cookie. Falls back to `_default` only
+    on routes that should never be hit unauthenticated — the before_request
+    hook would normally reject those first."""
+    sess = _current_session()
+    return sess["sid"] if sess else "_default"
 
 
 # Naive in-memory rate limit for /api/auth/login: max 5 failed attempts per
@@ -707,7 +828,7 @@ def _load_run_meta(csv_path: Path) -> dict:
         ).isoformat()
     except OSError:
         pass
-    cfg_path = _TRAJ_ROOT / "json_files" / "_current.json"
+    cfg_path = _session_current_json()
     if cfg_path.exists():
         try:
             with open(cfg_path) as f:
@@ -746,7 +867,7 @@ def trajectory_output():
     yet, so the client can show an empty state without treating it as an
     error condition.
     """
-    csv_path = _TRAJ_OUTPUT / "simulation_output.csv"
+    csv_path = _session_output_dir() / "simulation_output.csv"
     if not csv_path.exists():
         return jsonify(
             {
@@ -778,7 +899,7 @@ def trajectory_output():
 
     # Load run config now (we want it for both event detection and the
     # response), then look for events.
-    cfg_path = _TRAJ_ROOT / "json_files" / "_current.json"
+    cfg_path = _session_current_json()
     config: dict = {}
     if cfg_path.exists():
         try:
@@ -951,8 +1072,9 @@ def _read_simulation_output(run_id: str):
             )
 
 
-_TRAJ_PRESETS_DIR = _TRAJ_ROOT / "json_files" / "presets"
-_TRAJ_DEBRIS_PRESETS_DIR = _TRAJ_ROOT / "json_files" / "debris_presets"
+# `_TRAJ_PRESETS_DIR` / `_TRAJ_DEBRIS_PRESETS_DIR` are now defined at
+# module top, pointing at CC_DATA_DIR/shared/* on a persistent disk in
+# production. Local dev path is preserved via the default.
 
 
 @app.get("/api/trajectory/presets")
@@ -1144,7 +1266,8 @@ def debris_delete_preset(name: str):
 
 # ── Load existing simulation data (mirrors desktop `_load_simulation`) ──
 
-_TRAJ_PRELOADED_DIR = _TRAJ_ROOT / "Pre-loaded Trajectories"
+# `_TRAJ_PRELOADED_DIR` is now defined at module top under
+# CC_DATA_DIR/shared/pre_loaded — persisted across redeploys.
 
 # ── Compare file cache ──────────────────────────────────────────────
 # XLSX files in `Pre-loaded Trajectories/` take 5–15 seconds for
@@ -1161,7 +1284,11 @@ _TRAJ_PRELOADED_DIR = _TRAJ_ROOT / "Pre-loaded Trajectories"
 # Mtime-based invalidation: if the source XLSX/CSV is rewritten,
 # the L1 entry's `mtime` no longer matches and the L2 cache file
 # (which encodes the source mtime in its name) is stale.
-_COMPARE_CACHE_DIR = _TRAJ_OUTPUT / ".compare_cache"
+# Compare-page parquet cache. Shared across sessions (cache keys are
+# derived from file content/mtime) and lives on the persistent disk
+# so it survives redeploys.
+_COMPARE_CACHE_DIR = _DATA_ROOT / ".compare_cache"
+_COMPARE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 _COMPARE_DF_CACHE: dict = {}  # str(path) -> (mtime, df)
 
 
@@ -1377,7 +1504,7 @@ def trajectory_load_file():
     if len(df) < 2:
         return jsonify({"error": "File contains fewer than 2 data rows"}), 400
 
-    out = _TRAJ_OUTPUT / "simulation_output.csv"
+    out = _session_output_dir() / "simulation_output.csv"
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(out, index=False)
@@ -1386,7 +1513,7 @@ def trajectory_load_file():
 
     # Stale xlsx — desktop deletes it so any subsequent Excel export
     # rederives from the just-loaded CSV.
-    xlsx_out = _TRAJ_OUTPUT / "simulation_output.xlsx"
+    xlsx_out = _session_output_dir() / "simulation_output.xlsx"
     if xlsx_out.exists():
         try: xlsx_out.unlink()
         except OSError: pass
@@ -1436,7 +1563,7 @@ def trajectory_save_current():
     """
     import pandas as pd
 
-    src = _TRAJ_OUTPUT / "simulation_output.csv"
+    src = _session_output_dir() / "simulation_output.csv"
     if not src.exists():
         return jsonify({
             "error": (
@@ -1571,7 +1698,7 @@ def trajectory_load_saved():
     if len(df) < 2:
         return jsonify({"error": "File contains fewer than 2 data rows"}), 400
 
-    out = _TRAJ_OUTPUT / "simulation_output.csv"
+    out = _session_output_dir() / "simulation_output.csv"
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(out, index=False)
@@ -1580,7 +1707,7 @@ def trajectory_load_saved():
 
     # Same cache-invalidation dance as the file-upload /load endpoint
     # so the Plot/Map/Raw pages reflect the just-loaded data.
-    xlsx_out = _TRAJ_OUTPUT / "simulation_output.xlsx"
+    xlsx_out = _session_output_dir() / "simulation_output.xlsx"
     if xlsx_out.exists():
         try: xlsx_out.unlink()
         except OSError: pass
@@ -1721,7 +1848,7 @@ def trajectory_compare_list_files():
     `_open_compare`'s file scan.
     """
     out = []
-    cur = _TRAJ_OUTPUT / "simulation_output.csv"
+    cur = _session_output_dir() / "simulation_output.csv"
     if cur.exists():
         out.append({
             "name": "Current run",
@@ -1761,7 +1888,7 @@ def trajectory_compare_data():
         return jsonify({"error": "Missing 'file' query param"}), 400
 
     if file_arg == "__current__":
-        path = _TRAJ_OUTPUT / "simulation_output.csv"
+        path = _session_output_dir() / "simulation_output.csv"
     else:
         # Path-traversal guard: resolve, then verify the resolved path
         # is contained in the Pre-loaded Trajectories directory.
@@ -1820,14 +1947,11 @@ def trajectory_run():
     """
     payload = request.get_json(silent=True) or {}
 
-    # Write the config to _current.json — same path the desktop GUI uses,
-    # so the simulation reads the user's just-edited values.
-    json_dir = _TRAJ_ROOT / "json_files"
-    try:
-        json_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        return jsonify({"error": f"cannot create json_files dir: {exc}"}), 500
-    config_path = json_dir / "_current.json"
+    # Write the config to the session's `current.json` (was the
+    # repo's `_current.json`). The simulation reads it as its first
+    # argument; this isolates one coworker's in-progress params from
+    # another's.
+    config_path = _session_current_json()
     try:
         with open(config_path, "w") as f:
             json.dump(payload, f, indent=2)
@@ -1842,6 +1966,10 @@ def trajectory_run():
     src_dir = str(sim_script.parent)
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    # Tell the simulation where to write `simulation_output.csv` —
+    # the session-private output dir, not the legacy `../output/`.
+    # simulation.py honours this env var (see its CSV-export block).
+    env["CC_OUTPUT_DIR"] = str(_session_output_dir())
 
     try:
         proc = subprocess.Popen(
@@ -2168,16 +2296,21 @@ def _read_debris_subprocess(run_id: str):
             return
 
         # If we never captured Parent folder, scrape it from the most
-        # recently-modified `debris_multi_*` dir as a fallback.
+        # recently-modified `debris_multi_*` dir in this session as a
+        # fallback. `_debris_dir_for_run` was stashed when the run was
+        # spawned so we can resolve the right per-session location
+        # even after the request's auth context is gone.
         if not run.get("parent_folder"):
             try:
-                candidates = sorted(
-                    _DEBRIS_DATA.glob("debris_multi_*"),
-                    key=lambda p: p.stat().st_mtime,
-                    reverse=True,
-                )
-                if candidates and candidates[0].stat().st_mtime > run["start_time_wall"]:
-                    run["parent_folder"] = str(candidates[0])
+                debris_data_dir = Path(run.get("debris_dir") or "")
+                if debris_data_dir.is_dir():
+                    candidates = sorted(
+                        debris_data_dir.glob("debris_multi_*"),
+                        key=lambda p: p.stat().st_mtime,
+                        reverse=True,
+                    )
+                    if candidates and candidates[0].stat().st_mtime > run["start_time_wall"]:
+                        run["parent_folder"] = str(candidates[0])
             except OSError:
                 pass
 
@@ -2212,13 +2345,16 @@ def debris_run():
     mode = (payload.get("mode") or "interval").lower()
     params = payload.get("params") or {}
 
-    sim_csv = _TRAJ_OUTPUT / "simulation_output.csv"
+    sim_csv = _session_output_dir() / "simulation_output.csv"
     if not sim_csv.exists():
         return jsonify({
             "error": "no simulation output yet — run a trajectory simulation first",
         }), 400
 
-    debris_dir = _TRAJ_ROOT / "json_files" / "json_debris"
+    # Per-session debris input dir — keeps two coworkers' debris configs
+    # from clobbering each other if they run analyses concurrently.
+    debris_dir = _session_root() / "json_debris"
+    debris_dir.mkdir(parents=True, exist_ok=True)
     csv_path    = debris_dir / "gui_debris_trajectory.csv"
     config_path = debris_dir / "gui_debris_config.json"
 
@@ -2255,13 +2391,17 @@ def debris_run():
         return jsonify({"error": f"run_csv.py not found: {run_script}"}), 500
 
     src_dir = str(_TRAJ_ROOT / "src")
-    debris_data_dir = _DEBRIS_DATA
+    debris_data_dir = _session_debris_dir()
     debris_data_dir.mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = src_dir + os.pathsep + existing if existing else src_dir
+    # Tell debris_calculation/run_csv.py where to find the source
+    # simulation_output.csv (session-private) instead of the legacy
+    # in-repo `../output/` location.
+    env["CC_OUTPUT_DIR"] = str(_session_output_dir())
 
     try:
         proc = subprocess.Popen(
@@ -2291,6 +2431,10 @@ def debris_run():
             "parent_folder":   None,
             "n_rows":          n_rows,
             "mode":            mode,
+            # Stash the per-session debris directory on the run record
+            # so the background output-reader (no request context) can
+            # still resolve where this run's subfolders live.
+            "debris_dir":      str(debris_data_dir),
         }
 
     threading.Thread(
@@ -2352,9 +2496,10 @@ def debris_output_list():
     """List available debris runs (newest first), with quick metadata.
     Used by the debris results page to pick the latest run on mount."""
     runs = []
-    if _DEBRIS_DATA.exists():
+    debris_root = _session_debris_dir()
+    if debris_root.exists():
         for d in sorted(
-            _DEBRIS_DATA.glob("debris_multi_*"),
+            debris_root.glob("debris_multi_*"),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         ):
@@ -2409,7 +2554,7 @@ def debris_output_one(run_id: str):
     # Sanitize the run_id — it must be a debris_multi_* folder we own.
     if not run_id.startswith("debris_multi_") or "/" in run_id or ".." in run_id:
         return jsonify({"error": "invalid run id"}), 400
-    run_dir = _DEBRIS_DATA / run_id
+    run_dir = _session_debris_dir() / run_id
     if not run_dir.is_dir():
         return jsonify({"error": "run not found", "run_id": run_id}), 404
 
@@ -2559,7 +2704,7 @@ def _load_full_trajectory_df():
     the *first* /raw chunk request after a sim feel snappy. Falls back
     silently if pyarrow isn't installed.
     """
-    csv_path = _TRAJ_OUTPUT / "simulation_output.csv"
+    csv_path = _session_output_dir() / "simulation_output.csv"
     if not csv_path.exists():
         return None
     try:
@@ -2609,7 +2754,7 @@ def trajectory_output_raw():
         rows: [[v0, v1, …], …],   // 2D array, NaN/Inf serialized as null
       }
     """
-    csv_path = _TRAJ_OUTPUT / "simulation_output.csv"
+    csv_path = _session_output_dir() / "simulation_output.csv"
     if not csv_path.exists():
         return jsonify({
             "exists": False,
@@ -2696,7 +2841,7 @@ def trajectory_output_raw_all():
       Body: row-major float64 buffer (rows × cols × 8 bytes).
             NaN encodes a missing / non-finite value.
     """
-    csv_path = _TRAJ_OUTPUT / "simulation_output.csv"
+    csv_path = _session_output_dir() / "simulation_output.csv"
     if not csv_path.exists():
         return jsonify({
             "exists": False,
@@ -2758,7 +2903,7 @@ def trajectory_output_download():
 
     Query string: `?format=csv` (default) | `?format=xlsx`
     """
-    csv_path = _TRAJ_OUTPUT / "simulation_output.csv"
+    csv_path = _session_output_dir() / "simulation_output.csv"
     if not csv_path.exists():
         return jsonify({"error": "no simulation output yet"}), 404
 
@@ -2818,9 +2963,10 @@ def _validate_debris_run_dir(run_id: str) -> Path | None:
     or None if the run id is invalid / missing."""
     if not run_id.startswith("debris_multi_") or "/" in run_id or ".." in run_id:
         return None
-    run_dir = (_DEBRIS_DATA / run_id).resolve()
+    _dbd = _session_debris_dir()
+    run_dir = (_dbd / run_id).resolve()
     try:
-        run_dir.relative_to(_DEBRIS_DATA.resolve())
+        run_dir.relative_to(_dbd.resolve())
     except ValueError:
         return None
     if not run_dir.is_dir():

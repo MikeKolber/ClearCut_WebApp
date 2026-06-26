@@ -817,7 +817,15 @@ simulation_df = pd.DataFrame({
     'z_engine_m': z_engine_history,
 })
 
-simulation_output_path = Path('../output/simulation_output.csv')
+# CC_OUTPUT_DIR (set by the web backend, points at the calling user's
+# per-session workspace) directs the CSV there. Falls back to the
+# legacy relative path when running the script directly from a shell.
+# `os` was already imported above the aero_data section.
+_output_override = os.environ.get('CC_OUTPUT_DIR')
+if _output_override:
+    simulation_output_path = Path(_output_override) / 'simulation_output.csv'
+else:
+    simulation_output_path = Path('../output/simulation_output.csv')
 simulation_output_path.parent.mkdir(parents=True, exist_ok=True)
 simulation_df.to_csv(str(simulation_output_path), index=False)
 print(f"\n{Fore.GREEN}Exported simulation data to {simulation_output_path}{Style.RESET_ALL}")
