@@ -24,7 +24,6 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
-import threading
 import time
 from pathlib import Path
 from typing import Iterable
@@ -247,23 +246,14 @@ class R2EngineTestStorage(EngineTestStorage):
         )
         self._cache_dir = Path(tempfile.gettempdir()) / self._CACHE_DIRNAME
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-        # Shared full-bucket snapshot. Both list_tests and list_test_files
-        # derive from this list, so scanning R2 once serves both endpoints.
+        # Shared full-bucket snapshot. Populated lazily on the first
+        # request that needs it (list_tests / list_test_files) and
+        # reused for _LIST_TTL_S. No background pre-warm and no lock —
+        # earlier attempts to be clever here (background thread holding
+        # a lock) caused the whole backend to freeze up when the R2
+        # call was slow.
         self._snapshot_t: float = 0.0
         self._snapshot: list[dict] = []
-        self._snapshot_lock = threading.Lock()
-
-        # Pre-warm the cache in a background thread so the first user
-        # click on Engine Test doesn't wait a whole R2 round-trip.
-        # Silent failure is fine — if the pre-warm dies, the real
-        # request will retry and surface the error properly.
-        try:
-            threading.Thread(
-                target=self._safe_prewarm, daemon=True,
-                name="r2-engine-test-prewarm",
-            ).start()
-        except Exception:
-            pass
 
     @property
     def description(self) -> str:
@@ -306,77 +296,32 @@ class R2EngineTestStorage(EngineTestStorage):
             return False
         return True
 
-    def _safe_prewarm(self) -> None:
-        """Background thread entry-point that warms the snapshot cache
-        at construction time. Retries a few times so a transient R2
-        blip on cold start doesn't leave the cache permanently empty."""
-        import sys as _sys
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
-            try:
-                t0 = time.time()
-                n = len(self._snapshot_bucket())
-                print(
-                    f"[r2-engine-test] pre-warm ok — {n} files cached in "
-                    f"{time.time() - t0:.2f}s (attempt {attempt})",
-                    file=_sys.stderr, flush=True,
-                )
-                return
-            except Exception as exc:
-                print(
-                    f"[r2-engine-test] pre-warm attempt {attempt}/{max_attempts} "
-                    f"failed: {type(exc).__name__}: {exc}",
-                    file=_sys.stderr, flush=True,
-                )
-                if attempt < max_attempts:
-                    time.sleep(min(2 ** attempt, 10))
-        print(
-            "[r2-engine-test] pre-warm giving up; cache will populate "
-            "on first user request instead",
-            file=_sys.stderr, flush=True,
-        )
-
     def _snapshot_bucket(self) -> list[dict]:
-        """Full-bucket scan with an LRU-ish TTL cache. Both `list_tests`
+        """Full-bucket scan with a simple TTL cache. Both `list_tests`
         and `list_test_files` read from this so a single R2 round-trip
-        serves the whole Engine Test page load. Guarded by a lock so
-        two concurrent misses don't stampede R2 with duplicate scans."""
+        serves the whole Engine Test page load.
+
+        No lock, no background thread — populated inline by the first
+        request that hits a stale cache. Two concurrent misses each do
+        their own R2 call (wasteful but not broken — the last write
+        wins). We accept that trade-off because the alternatives
+        (background pre-warm + lock) were causing the entire backend
+        to freeze when the R2 call was slow."""
+        import sys as _sys
         now = time.time()
-        # Fast path: cache still fresh (no lock needed for a stale read).
         if self._snapshot and now - self._snapshot_t < self._LIST_TTL_S:
             return self._snapshot
 
-        # Non-blocking lock acquisition. If another thread is already
-        # refreshing the snapshot (e.g. the pre-warm background thread
-        # is mid-R2 call), user requests IMMEDIATELY return whatever's
-        # currently cached (even if empty) instead of piling up behind
-        # the lock. Piling up would eat gunicorn worker threads and
-        # eventually 502 unrelated requests when the queue fills.
-        acquired = self._snapshot_lock.acquire(blocking=False)
-        if not acquired:
-            import sys as _sys
-            print(
-                "[r2-engine-test] refresh already in progress — returning "
-                f"{'stale' if self._snapshot else 'empty'} cache",
-                file=_sys.stderr, flush=True,
-            )
-            return self._snapshot
+        t0 = time.time()
         try:
-            # Recheck under lock — another thread may have refreshed
-            # while we were waiting.
-            now = time.time()
-            if self._snapshot and now - self._snapshot_t < self._LIST_TTL_S:
-                return self._snapshot
-
             snapshot: list[dict] = []
             for obj in self._list_all_objects(self._prefix):
                 rel = self._strip_prefix(obj["Key"])
                 if not rel or rel.endswith("/"):
                     continue
                 ext = Path(rel).suffix.lower()
-                # Skip the aux tdms_index files and anything else we
-                # don't surface, so the cached snapshot is exactly what
-                # both endpoints will use.
+                # Skip anything we don't surface — the frontend only
+                # cares about TDMS + video files.
                 if ext != _TDMS_EXTENSION and ext not in VIDEO_EXTENSIONS:
                     continue
                 snapshot.append({
@@ -388,11 +333,25 @@ class R2EngineTestStorage(EngineTestStorage):
                     ),
                     "_ext": ext,
                 })
+            elapsed = time.time() - t0
+            print(
+                f"[r2-engine-test] refresh ok — {len(snapshot)} files "
+                f"in {elapsed:.2f}s",
+                file=_sys.stderr, flush=True,
+            )
             self._snapshot = snapshot
             self._snapshot_t = time.time()
             return snapshot
-        finally:
-            self._snapshot_lock.release()
+        except Exception as exc:
+            elapsed = time.time() - t0
+            print(
+                f"[r2-engine-test] refresh failed after {elapsed:.2f}s: "
+                f"{type(exc).__name__}: {exc}",
+                file=_sys.stderr, flush=True,
+            )
+            # On failure return the previous snapshot if we have one
+            # (better a slightly stale list than an empty one).
+            return self._snapshot
 
     # ── interface ──────────────────────────────────────────────────────
 
