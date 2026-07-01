@@ -22,6 +22,15 @@ import './RocketViewerModal.css';
  *   reused so the two modals feel like part of the same family.
  * ──────────────────────────────────────────────────────────────── */
 
+/* Cover colour modes. `dot` is the swatch colour shown in the picker;
+   `id` matches the palette keys in rocketScene's COVER_PALETTES. */
+const COLOR_MODES = [
+  { id: 'white',    label: 'White',      dot: '#E6E6EA' },
+  { id: 'black',    label: 'Black',      dot: '#17181c' },
+  { id: 'darkblue', label: 'Dark Blue',  dot: '#1a2740' },
+  { id: 'metal',    label: 'Bare Metal', dot: '#b8bcc4' },
+];
+
 function RocketViewerModal({ onClose }) {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
@@ -41,6 +50,7 @@ function RocketViewerModal({ onClose }) {
   /* Outer cover on by default — the viewer opens on the finished,
      wrapped rocket and the user dissolves it to reveal the internals. */
   const [coverOn, setCoverOn] = useState(true);
+  const [colorMode, setColorMode] = useState('white');
 
   // Step 1 — fetch the rocket geometry from the backend.
   useEffect(() => {
@@ -123,6 +133,10 @@ function RocketViewerModal({ onClose }) {
   const onToggleCover = () => {
     const coverNowOn = sceneRef.current?.toggleCover?.();
     if (typeof coverNowOn === 'boolean') setCoverOn(coverNowOn);
+  };
+  const onPickColor = (mode) => {
+    sceneRef.current?.setColorMode?.(mode);
+    setColorMode(mode);
   };
   const onResetView = () => {
     sceneRef.current?.resetView?.();
@@ -291,6 +305,24 @@ function RocketViewerModal({ onClose }) {
                       {coverOn ? 'Reveal Internals' : 'Restore Shell'}
                     </span>
                   </button>
+
+                  {/* Colour-mode picker — flies out to the left when the
+                      user hovers (or keyboard-focuses) the cover control.
+                      Swatches recolour the whole rocket livery live. */}
+                  <div className="RVM-color-flyout" role="group" aria-label="Rocket colour">
+                    {COLOR_MODES.map(({ id, label, dot }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`RVM-color-swatch${colorMode === id ? ' RVM-color-swatch--on' : ''}`}
+                        style={{ '--swatch': dot }}
+                        onClick={() => onPickColor(id)}
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={colorMode === id}
+                      />
+                    ))}
+                  </div>
                 </div>
                 <button
                   type="button"

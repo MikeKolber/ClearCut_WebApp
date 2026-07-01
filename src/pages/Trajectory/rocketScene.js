@@ -34,6 +34,7 @@ import * as THREE from 'three';
    survives any future deploy where `public/` is mounted at a
    non-root prefix. */
 import companyLogoUrl from '../../assets/ccs-logo-black.svg';
+import israelFlagUrl from '../../assets/ccs-israel-flag.svg';
 import { OrbitControls }   from 'three/examples/jsm/controls/OrbitControls';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment';
 import { EffectComposer }  from 'three/examples/jsm/postprocessing/EffectComposer';
@@ -830,6 +831,49 @@ const COVER_PALETTES = {
     logoColor: '#141418',
     raceway:   0xb8b8c0,
     ringMetal: 0x2a2a30,
+    /* Skin finish — kept matte-ish so the white body doesn't read as
+       glossy plastic. */
+    skinRough: 0.62, skinMetal: 0.10, skinCoat: 0.16, skinEnv: 0.38,
+  },
+  black: {
+    base:      '#17181c',
+    panelLine: 'rgba(200,200,215,0.16)',
+    ring:      'rgba(190,190,205,0.13)',
+    rivet:     'rgba(210,210,225,0.28)',
+    band:      '#050506',
+    rollA:     '#050506',
+    rollB:     '#e8e8ec',
+    logoColor: '#f2f2f6',
+    raceway:   0x2c2c33,
+    ringMetal: 0x101013,
+    skinRough: 0.52, skinMetal: 0.26, skinCoat: 0.22, skinEnv: 0.5,
+  },
+  darkblue: {
+    base:      '#1a2740',
+    panelLine: 'rgba(170,190,225,0.18)',
+    ring:      'rgba(150,175,215,0.15)',
+    rivet:     'rgba(190,205,235,0.28)',
+    band:      '#0b1120',
+    rollA:     '#0b1120',
+    rollB:     '#eef2f8',
+    logoColor: '#eef3fb',
+    raceway:   0x2a3a58,
+    ringMetal: 0x101828,
+    skinRough: 0.5, skinMetal: 0.22, skinCoat: 0.24, skinEnv: 0.5,
+  },
+  metal: {
+    base:      '#b8bcc4',
+    panelLine: 'rgba(70,72,80,0.32)',
+    ring:      'rgba(60,62,70,0.30)',
+    rivet:     'rgba(50,52,60,0.5)',
+    band:      '#3a3d45',
+    rollA:     '#222327',
+    rollB:     '#e6e8ec',
+    logoColor: '#1b1c20',
+    raceway:   0x9aa0aa,
+    ringMetal: 0x3a3d45,
+    /* Brushed-metal look — high metalness, low roughness. */
+    skinRough: 0.34, skinMetal: 0.72, skinCoat: 0.30, skinEnv: 0.72,
   },
 };
 
@@ -861,7 +905,7 @@ function tintImage(img, color, w, h) {
  * erodes together with the skin during the dissolve reveal, instead of
  * detail meshes hanging in mid-air.
  */
-function buildCoverLivery(palette, geom) {
+function buildCoverLivery(geom) {
   const { yMax, bands = [], rollTop = 0, seams = 28 } = geom;
   const CW = 2048, CH = 2048;
   const canvas = document.createElement('canvas');
@@ -872,54 +916,58 @@ function buildCoverLivery(palette, geom) {
      the rocket) maps to the BOTTOM row of the canvas. */
   const vToY = (v) => (1 - v) * CH;
 
-  ctx.fillStyle = palette.base;
-  ctx.fillRect(0, 0, CW, CH);
+  /* Draw the whole paint scheme for `palette`. Called on first build
+     and again whenever the colour mode changes (the decals are then
+     re-stamped on top by buildCover). */
+  const drawBase = (palette) => {
+    ctx.fillStyle = palette.base;
+    ctx.fillRect(0, 0, CW, CH);
 
-  /* Vertical panel seams. */
-  ctx.strokeStyle = palette.panelLine;
-  ctx.lineWidth = 2;
-  for (let i = 0; i < seams; i++) {
-    const px = (i / seams) * CW;
-    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, CH); ctx.stroke();
-  }
-
-  /* Horizontal stiffener rings (~every 1.4 m) with a row of rivet dots. */
-  const ringN = Math.max(2, Math.floor(yMax / 1.4));
-  for (let i = 1; i < ringN; i++) {
-    const py = vToY(i / ringN);
-    ctx.strokeStyle = palette.ring;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(CW, py); ctx.stroke();
-    ctx.fillStyle = palette.rivet;
-    for (let j = 0; j < seams * 2; j++) {
-      const px = (j / (seams * 2)) * CW;
-      ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
+    /* Vertical panel seams. */
+    ctx.strokeStyle = palette.panelLine;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < seams; i++) {
+      const px = (i / seams) * CW;
+      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, CH); ctx.stroke();
     }
-  }
 
-  /* Dark stage bands (fixed accent) across each interstage span. */
-  ctx.fillStyle = palette.band;
-  for (const b of bands) {
-    const yTop = vToY(b.y1 / yMax);
-    const yBot = vToY(b.y0 / yMax);
-    ctx.fillRect(0, yTop, CW, yBot - yTop);
-  }
-
-  /* Roll pattern near the base — alternating black/white blocks, the
-     classic optical-tracking checkerboard. Fixed accent (never
-     recoloured with the body). */
-  if (rollTop > 0) {
-    const yTop = vToY(rollTop / yMax);
-    const yBot = vToY(0);
-    const cells = 16, rows = 3;
-    const cw = CW / cells, rh = (yBot - yTop) / rows;
-    for (let r = 0; r < rows; r++) {
-      for (let cI = 0; cI < cells; cI++) {
-        ctx.fillStyle = ((r + cI) % 2 === 0) ? palette.rollA : palette.rollB;
-        ctx.fillRect(cI * cw, yTop + r * rh, cw, rh);
+    /* Horizontal stiffener rings (~every 1.4 m) with a row of rivet dots. */
+    const ringN = Math.max(2, Math.floor(yMax / 1.4));
+    for (let i = 1; i < ringN; i++) {
+      const py = vToY(i / ringN);
+      ctx.strokeStyle = palette.ring;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(CW, py); ctx.stroke();
+      ctx.fillStyle = palette.rivet;
+      for (let j = 0; j < seams * 2; j++) {
+        const px = (j / (seams * 2)) * CW;
+        ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
       }
     }
-  }
+
+    /* Dark stage bands (fixed accent) across each interstage span. */
+    ctx.fillStyle = palette.band;
+    for (const b of bands) {
+      const yTop = vToY(b.y1 / yMax);
+      const yBot = vToY(b.y0 / yMax);
+      ctx.fillRect(0, yTop, CW, yBot - yTop);
+    }
+
+    /* Roll pattern near the base — alternating black/white blocks, the
+       classic optical-tracking checkerboard. Fixed accent. */
+    if (rollTop > 0) {
+      const yTop = vToY(rollTop / yMax);
+      const yBot = vToY(0);
+      const cells = 16, rows = 3;
+      const cw = CW / cells, rh = (yBot - yTop) / rows;
+      for (let r = 0; r < rows; r++) {
+        for (let cI = 0; cI < cells; cI++) {
+          ctx.fillStyle = ((r + cI) % 2 === 0) ? palette.rollA : palette.rollB;
+          ctx.fillRect(cI * cw, yTop + r * rh, cw, rh);
+        }
+      }
+    }
+  };
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -927,7 +975,7 @@ function buildCoverLivery(palette, geom) {
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
 
-  return { canvas, ctx, tex, vToY, CW, CH };
+  return { canvas, ctx, tex, vToY, CW, CH, drawBase };
 }
 
 /* ---------- removable outer cover (the "real rocket" aeroshell) ----------
@@ -940,13 +988,15 @@ function buildCoverLivery(palette, geom) {
  *
  * The skin carries a baked procedural livery texture (panel lines,
  * rings, stage bands, roll pattern, and — loaded async — the company
- * logo). A couple of raised geometry accents (a cable raceway running
- * the body and a base structural ring) add real 3D relief. Every cover
- * material is a dissolve material driven by the same `uDissolve`, so
- * the whole assembly erodes together during the reveal.
+ * logo + national flag). A couple of raised geometry accents (a cable
+ * raceway running the body and a base structural ring) add real 3D
+ * relief. Every cover material is a dissolve material driven by the
+ * same `uDissolve`, so the whole assembly erodes together on reveal.
  *
- * `m` carries the axial milestones already computed inside buildRocket
- * so we don't re-derive stack heights here.
+ * Colour modes: `setColorMode(name)` re-draws the livery + re-stamps
+ * the decals for the chosen palette and retints the skin finish, so
+ * the whole vehicle recolours live. `m` carries the axial milestones
+ * already computed inside buildRocket so we don't re-derive heights.
  */
 function buildCover(D, m) {
   const R1 = D.stage1_radius;
@@ -999,7 +1049,12 @@ function buildCover(D, m) {
     return pts[pts.length - 1].x;
   };
 
-  const palette = COVER_PALETTES.white;
+  /* Mutable cover state: the active palette + cached decal images. */
+  const state = {
+    palette: COVER_PALETTES.white,
+    logoImg: null,
+    flagImg: null,
+  };
 
   /* Livery texture. Bands sit on the two interstages; roll pattern
      covers the bottom ~5% of the vehicle. */
@@ -1007,19 +1062,19 @@ function buildCover(D, m) {
     { y0: m.s1Top, y1: m.is12Top },
     { y0: m.s2Top, y1: m.is23Top },
   ];
-  const livery = buildCoverLivery(palette, {
+  const livery = buildCoverLivery({
     yMax,
     bands,
     rollTop: yMax * 0.05,
     seams: 30,
   });
 
-  /* Main skin lathe. Colour left white so the baked texture shows
+  /* Main skin lathe. Colour stays white so the baked texture shows
      through unmodulated; V remapped to normalised height so the livery
      lines up with real heights. */
   const material = makeDissolveMaterial(
     0xffffff,
-    { rough: 0.5, metal: 0.12, coat: 0.35, coatR: 0.2, env: 0.55, double: true },
+    { rough: 0.5, metal: 0.12, coat: 0.2, coatR: 0.2, env: 0.4, double: true },
     { yMin: 0, yMax, noiseScale: 3.0, sweep: 0.55 },
   );
   material.map = livery.tex;
@@ -1057,7 +1112,7 @@ function buildCover(D, m) {
     rcPts.push(new THREE.Vector3(Math.cos(rcAngle) * r, y, Math.sin(rcAngle) * r));
   }
   const rcMat = makeDissolveMaterial(
-    palette.raceway, { metal: 0.5, rough: 0.35, coat: 0.2 }, dissolveOpts,
+    state.palette.raceway, { metal: 0.5, rough: 0.35, coat: 0.2 }, dissolveOpts,
   );
   group.add(new THREE.Mesh(
     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rcPts), RCN, fRad * 0.022, 8, false),
@@ -1072,38 +1127,93 @@ function buildCover(D, m) {
   ringGeo.rotateX(Math.PI / 2);
   ringGeo.translate(0, ringY, 0);
   const ringMat = makeDissolveMaterial(
-    palette.ringMetal, { metal: 0.6, rough: 0.3 }, dissolveOpts,
+    state.palette.ringMetal, { metal: 0.6, rough: 0.3 }, dissolveOpts,
   );
   group.add(new THREE.Mesh(ringGeo, ringMat));
   materials.push(ringMat);
 
-  /* Async logo baker. Loads the (monochrome) company logo, tints it for
-     contrast against the body colour, and stamps it onto the livery
-     canvas at the stage-2 barrel height, mirrored on both sides so a
-     mark is always in view as the rocket rotates. `isAlive` guards
-     against the modal closing before the SVG finishes decoding. */
-  const applyLogo = (isAlive) => {
-    if (typeof window === 'undefined') return;
-    loadImage(DECAL_LOGO_URL).then((img) => {
-      if (!isAlive || !isAlive()) return;
-      const aspect = (img.naturalWidth && img.naturalHeight)
-        ? img.naturalWidth / img.naturalHeight : 4.59;
-      const logoCenterY = (m.is12Top + m.s2Top) / 2;
-      const arcFrac = 0.26;                      // fraction of circumference
-      const physW = arcFrac * 2 * Math.PI * R2;  // metres around at R2
-      const physH = physW / aspect;
-      const boxW = arcFrac * livery.CW;
-      const boxH = (physH / yMax) * livery.CH;
-      const topY = livery.vToY(logoCenterY / yMax) - boxH / 2;
-      const tinted = tintImage(img, palette.logoColor, boxW, boxH);
-      for (const uCenter of [0.25, 0.75]) {
-        livery.ctx.drawImage(tinted, uCenter * livery.CW - boxW / 2, topY, boxW, boxH);
+  /* ── decals: logo (tinted for contrast) stacked over the full-colour
+     flag, mirrored at φ=0 and φ=π so a mark is always in view. Drawn on
+     top of the base livery; re-stamped whenever the base is redrawn. ── */
+  const logoCenterY = (m.is12Top + m.s2Top) / 2;
+  const LOGO_ARC = 0.34;   // fraction of circumference (bumped up a touch)
+  const FLAG_ARC = 0.15;
+
+  const stampDecals = (palette) => {
+    const { ctx, CW, CH, vToY } = livery;
+    const boxHfor = (img, arc, fallbackAspect) => {
+      const aspect = (img && img.naturalWidth && img.naturalHeight)
+        ? img.naturalWidth / img.naturalHeight : fallbackAspect;
+      const physH = (arc * 2 * Math.PI * R2) / aspect;
+      return (physH / yMax) * CH;
+    };
+    const logoH = state.logoImg ? boxHfor(state.logoImg, LOGO_ARC, 4.59) : 0;
+    const flagH = state.flagImg ? boxHfor(state.flagImg, FLAG_ARC, 1.4) : 0;
+    const gap = state.logoImg && state.flagImg ? Math.max(logoH * 0.3, 8) : 0;
+    const blockH = logoH + gap + flagH;
+    /* Canvas Y grows downward, so the smallest Y is the TOP of the
+       block → the logo sits above the flag on the vehicle. */
+    let y = vToY(logoCenterY / yMax) - blockH / 2;
+
+    if (state.logoImg) {
+      const boxW = LOGO_ARC * CW;
+      const tinted = tintImage(state.logoImg, palette.logoColor, boxW, logoH);
+      for (const uc of [0.25, 0.75]) {
+        ctx.drawImage(tinted, uc * CW - boxW / 2, y, boxW, logoH);
       }
-      livery.tex.needsUpdate = true;
-    }).catch(() => { /* silent — livery logo is cosmetic */ });
+      y += logoH + gap;
+    }
+    if (state.flagImg) {
+      const boxW = FLAG_ARC * CW;
+      for (const uc of [0.25, 0.75]) {
+        ctx.drawImage(state.flagImg, uc * CW - boxW / 2, y, boxW, flagH);
+      }
+    }
   };
 
-  return { group, materials, yMin: 0, yMax, applyLogo };
+  /* Push the palette's finish onto the live materials (called on build
+     and on every colour-mode change). */
+  const applyFinish = (palette) => {
+    material.roughness = palette.skinRough;
+    material.metalness = palette.skinMetal;
+    material.clearcoat = palette.skinCoat;
+    material.envMapIntensity = palette.skinEnv;
+    rcMat.color.set(palette.raceway);
+    ringMat.color.set(palette.ringMetal);
+  };
+
+  /* First paint (decals stamp in later once their images load). */
+  livery.drawBase(state.palette);
+  applyFinish(state.palette);
+
+  /* Async decal loader — caches the images then stamps them for the
+     current palette. `isAlive` guards a torn-down scene. */
+  const applyDecals = (isAlive) => {
+    if (typeof window === 'undefined') return;
+    Promise.all([
+      loadImage(DECAL_LOGO_URL).catch(() => null),
+      loadImage(DECAL_FLAG_URL).catch(() => null),
+    ]).then(([logo, flag]) => {
+      if (isAlive && !isAlive()) return;
+      state.logoImg = logo;
+      state.flagImg = flag;
+      stampDecals(state.palette);
+      livery.tex.needsUpdate = true;
+    }).catch(() => { /* silent — decals are cosmetic */ });
+  };
+
+  /* Live colour-mode switch. */
+  const setColorMode = (mode) => {
+    const palette = COVER_PALETTES[mode];
+    if (!palette) return;
+    state.palette = palette;
+    livery.drawBase(palette);
+    stampDecals(palette);
+    livery.tex.needsUpdate = true;
+    applyFinish(palette);
+  };
+
+  return { group, materials, yMin: 0, yMax, applyDecals, setColorMode };
 }
 
 /* ---------- full rocket assembly with per-stage subgroups ----------
@@ -1393,9 +1503,11 @@ function buildRocket(D) {
        loop via its material's `uDissolve` uniform. */
     coverGroup: coverBuilt.group,
     coverMaterials: coverBuilt.materials,
-    /* Async logo baker for the cover livery — called by
+    /* Async decal baker for the cover livery — called by
        setupRocketScene with the scene's `running` guard. */
-    applyCoverLogo: coverBuilt.applyLogo,
+    applyCoverDecals: coverBuilt.applyDecals,
+    /* Live cover colour-mode switch (white / black / darkblue / metal). */
+    coverSetColorMode: coverBuilt.setColorMode,
     explodeTargets: partGroups.map((g, i) => ({ group: g, offset: offsets[i] })),
     /* Full-vehicle span for the "total length" dimension line.
        `bottom` is stage 1's base (offset 0, stays grounded);
@@ -1516,15 +1628,17 @@ function buildSpaceBackground() {
   return new THREE.CanvasTexture(c);
 }
 
-/* ---------- company logo ----------
+/* ---------- company logo + flag ----------
  *
- * The single-colour company mark (which already incorporates the
- * national flag) is baked into the cover's livery texture by
- * buildCover's `applyLogo`. It's loaded lazily from webpack's import
- * URL so it bundles correctly in dev/prod and survives subpath deploys.
+ * The single-colour company mark (tinted for contrast) and the
+ * full-colour national flag are baked into the cover's livery texture
+ * by buildCover, stacked logo-over-flag on the stage-2 barrel. Both are
+ * loaded lazily from webpack's import URLs so they bundle correctly in
+ * dev/prod and survive subpath deploys.
  */
 
 const DECAL_LOGO_URL = companyLogoUrl;
+const DECAL_FLAG_URL = israelFlagUrl;
 
 function loadImage(url) {
   return new Promise((resolve, reject) => {
@@ -1593,6 +1707,7 @@ export function setupRocketScene(container, data, options = {}) {
   const totalH               = built.totalH;
   const coverGroup           = built.coverGroup;
   const coverMaterials       = built.coverMaterials || [];
+  const coverSetColorMode    = built.coverSetColorMode;
   const explodeTargets       = built.explodeTargets;
   const stageMeta            = built.meta;
   const disassembledMidWorld = built.disassembledMidWorld;
@@ -1603,12 +1718,11 @@ export function setupRocketScene(container, data, options = {}) {
   rocket.add(rocketInner);
   scene.add(rocket);
 
-  /* Bake the company logo (which already includes the flag) onto the
-     cover's livery, mirrored on both sides. Loaded asynchronously —
-     `running` doubles as a "still mounted?" guard so an SVG that
-     finishes decoding after the user closes the modal doesn't touch a
-     torn-down scene. */
-  built.applyCoverLogo?.(() => running);
+  /* Bake the company logo + national flag onto the cover's livery,
+     mirrored on both sides. Loaded asynchronously — `running` doubles
+     as a "still mounted?" guard so an SVG that finishes decoding after
+     the user closes the modal doesn't touch a torn-down scene. */
+  built.applyCoverDecals?.(() => running);
 
   /* The outer shell + its stiffener rings + access panels are a
      single rigid root-level group that wraps the whole vehicle.
@@ -2365,6 +2479,12 @@ export function setupRocketScene(container, data, options = {}) {
     toggleCover() {
       coverTarget = coverTarget > 0.5 ? 0 : 1;
       return coverTarget < 0.5;
+    },
+    /** Recolour the cover: 'white' | 'black' | 'darkblue' | 'metal'.
+     *  Re-draws the livery, re-stamps the decals with a contrast-safe
+     *  logo, and retints the skin finish. */
+    setColorMode(mode) {
+      coverSetColorMode?.(mode);
     },
     /** Reset the camera to the cinematic landing position, plus
      *  unhide everything (cancel explode / focus). Tilt resets to
