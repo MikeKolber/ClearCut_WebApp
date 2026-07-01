@@ -648,6 +648,16 @@ def engine_test_tdms(name: str, file_name: str):
                      "groups_available": groups}
                 ), 422
 
+            # Cap the number of samples we send per channel. A typical
+            # engine test at 10-50 kHz for a few seconds yields
+            # ~50k-500k samples — plotly can't render that smoothly and
+            # the raw payload can exceed 100 MB per channel, which then
+            # gets truncated in transit and shows up as a JSON parse
+            # error on the frontend (position ~50 MB into the response).
+            # 20k points is plenty for a visually accurate plot — beyond
+            # that the eye can't resolve individual samples anyway.
+            _TDMS_MAX_POINTS_PER_CHANNEL = 20_000
+
             for ch in ai_group.channels():
                 if any(kw in ch.name for kw in _TDMS_CHANNEL_FILTER):
                     continue
@@ -655,6 +665,24 @@ def engine_test_tdms(name: str, file_name: str):
                     arr = np.asarray(ch[:], dtype=np.float64)
                 except Exception:
                     continue
+
+                # Full-fidelity statistics computed from the raw array
+                # BEFORE decimation — so the min / max / mean reported
+                # to the user aren't skewed by the subsampling below.
+                finite_all = arr[np.isfinite(arr)]
+                ch_min = float(finite_all.min())   if finite_all.size else None
+                ch_max = float(finite_all.max())   if finite_all.size else None
+                ch_mean = float(finite_all.mean()) if finite_all.size else None
+                full_length = int(arr.size)
+
+                # Decimate for transmission. Every-Nth-sample keeps
+                # coarse peaks; for engine-test signals that's what
+                # matters for the plot. Higher-fidelity views should
+                # be a separate endpoint if we ever need them.
+                if arr.size > _TDMS_MAX_POINTS_PER_CHANNEL:
+                    step = int(np.ceil(arr.size / _TDMS_MAX_POINTS_PER_CHANNEL))
+                    arr = arr[::step]
+
                 # NaN/Inf are not JSON-encodable; replace with None.
                 arr = np.where(np.isfinite(arr), arr, np.nan)
                 clean = arr.tolist()
@@ -662,13 +690,13 @@ def engine_test_tdms(name: str, file_name: str):
                     None if (v is None or v != v) else float(v)  # NaN check
                     for v in clean
                 ]
-                finite = arr[np.isfinite(arr)]
                 channels[ch.name] = {
                     "data": clean,
-                    "length": len(clean),
-                    "min": float(finite.min()) if finite.size else None,
-                    "max": float(finite.max()) if finite.size else None,
-                    "mean": float(finite.mean()) if finite.size else None,
+                    "length": full_length,           # original sample count
+                    "decimated_length": len(clean),  # what we actually sent
+                    "min": ch_min,
+                    "max": ch_max,
+                    "mean": ch_mean,
                 }
     except Exception as exc:
         return (
