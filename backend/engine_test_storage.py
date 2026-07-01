@@ -308,24 +308,33 @@ class R2EngineTestStorage(EngineTestStorage):
 
     def _safe_prewarm(self) -> None:
         """Background thread entry-point that warms the snapshot cache
-        at construction time. Logs but doesn't re-raise on failure —
-        the real request path will surface any real problems to the
-        user (with the tightened timeout so it fails fast, not slow)."""
+        at construction time. Retries a few times so a transient R2
+        blip on cold start doesn't leave the cache permanently empty."""
         import sys as _sys
-        try:
-            t0 = time.time()
-            n = len(self._snapshot_bucket())
-            print(
-                f"[r2-engine-test] pre-warm ok — {n} files cached in "
-                f"{time.time() - t0:.2f}s",
-                file=_sys.stderr, flush=True,
-            )
-        except Exception as exc:
-            print(
-                f"[r2-engine-test] pre-warm failed: "
-                f"{type(exc).__name__}: {exc}",
-                file=_sys.stderr, flush=True,
-            )
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                t0 = time.time()
+                n = len(self._snapshot_bucket())
+                print(
+                    f"[r2-engine-test] pre-warm ok — {n} files cached in "
+                    f"{time.time() - t0:.2f}s (attempt {attempt})",
+                    file=_sys.stderr, flush=True,
+                )
+                return
+            except Exception as exc:
+                print(
+                    f"[r2-engine-test] pre-warm attempt {attempt}/{max_attempts} "
+                    f"failed: {type(exc).__name__}: {exc}",
+                    file=_sys.stderr, flush=True,
+                )
+                if attempt < max_attempts:
+                    time.sleep(min(2 ** attempt, 10))
+        print(
+            "[r2-engine-test] pre-warm giving up; cache will populate "
+            "on first user request instead",
+            file=_sys.stderr, flush=True,
+        )
 
     def _snapshot_bucket(self) -> list[dict]:
         """Full-bucket scan with an LRU-ish TTL cache. Both `list_tests`
@@ -337,17 +346,17 @@ class R2EngineTestStorage(EngineTestStorage):
         if self._snapshot and now - self._snapshot_t < self._LIST_TTL_S:
             return self._snapshot
 
-        # Non-blocking lock acquisition with a hard cap. If another
-        # thread is already refreshing the snapshot (e.g. the pre-warm
-        # thread is still running its first R2 call), waiting past
-        # LIST_TTL_S+read_timeout is a bug — we'd rather return a
-        # stale-or-empty snapshot than hang the user's request
-        # arbitrarily long.
-        acquired = self._snapshot_lock.acquire(timeout=25)
+        # Non-blocking lock acquisition. If another thread is already
+        # refreshing the snapshot (e.g. the pre-warm background thread
+        # is mid-R2 call), user requests IMMEDIATELY return whatever's
+        # currently cached (even if empty) instead of piling up behind
+        # the lock. Piling up would eat gunicorn worker threads and
+        # eventually 502 unrelated requests when the queue fills.
+        acquired = self._snapshot_lock.acquire(blocking=False)
         if not acquired:
             import sys as _sys
             print(
-                "[r2-engine-test] snapshot lock timeout — returning "
+                "[r2-engine-test] refresh already in progress — returning "
                 f"{'stale' if self._snapshot else 'empty'} cache",
                 file=_sys.stderr, flush=True,
             )
