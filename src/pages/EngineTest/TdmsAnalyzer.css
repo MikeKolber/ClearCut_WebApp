@@ -50,6 +50,15 @@
 .TA-section--scroll { min-height: 0; }
 .TA-section--grow   { flex: 1; }
 
+/* Cap the TDMS Files section (--scroll but not --grow) so a bucket
+   with many recordings doesn't push the Channels section (which has
+   the checkboxes + baseline inputs + averages) off the bottom of
+   the sidebar. Section-level max-height plus the child .TA-list's
+   own overflow:auto together give a self-scrolling file list. */
+.TA-section--scroll:not(.TA-section--grow) {
+  max-height: 33vh;
+}
+
 .TA-section-head {
   display: flex;
   align-items: center;
