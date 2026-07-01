@@ -34,7 +34,6 @@ import * as THREE from 'three';
    survives any future deploy where `public/` is mounted at a
    non-root prefix. */
 import companyLogoUrl from '../../assets/ccs-logo-black.svg';
-import israelFlagUrl from '../../assets/ccs-israel-flag.svg';
 import { OrbitControls }   from 'three/examples/jsm/controls/OrbitControls';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment';
 import { EffectComposer }  from 'three/examples/jsm/postprocessing/EffectComposer';
@@ -60,6 +59,7 @@ const C = {
   fin:     0x666666,
   ring:    0x222228,
   nose:    0xE0E0E8,
+  cover:   0xE8E8EC,   // outer aeroshell "operational white" (Phase 1 default)
 };
 
 /* ---------- material factory ---------- */
@@ -83,6 +83,94 @@ function mat(color, o = {}) {
     props.emissiveIntensity = 0.1;
   }
   return new THREE.MeshPhysicalMaterial(props);
+}
+
+/* ---------- dissolve material (removable outer cover) ----------
+ *
+ * A MeshPhysicalMaterial patched via `onBeforeCompile` so the outer
+ * cover can "burn away" when the user reveals the internal structure.
+ * A value-noise field erodes the surface as `uDissolve` climbs 0 → 1;
+ * the receding edge is pushed into `totalEmissiveRadiance` in an accent
+ * colour bright enough to cross the UnrealBloomPass threshold, so the
+ * dissolving rim visibly glows and blooms as it vanishes.
+ *
+ * `uSweep` biases the erosion threshold by height (object-space Y) so
+ * lower geometry disappears first — a directed bottom-to-top reveal
+ * rather than uniform static. The live `shader` object is stashed on
+ * `material.userData.dissolveShader` so the tick loop can animate
+ * `uDissolve` after the program has compiled.
+ */
+function makeDissolveMaterial(color, o = {}, dissolveOpts = {}) {
+  const material = mat(color, o);
+  const {
+    edgeColor = 0x8fe0ff,
+    edge = 0.10,
+    edgeIntensity = 3.4,
+    noiseScale = 3.0,
+    sweep = 0.55,
+    yMin = 0,
+    yMax = 1,
+  } = dissolveOpts;
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uDissolve      = { value: 0 };
+    shader.uniforms.uEdge          = { value: edge };
+    shader.uniforms.uEdgeColor     = { value: new THREE.Color(edgeColor) };
+    shader.uniforms.uEdgeIntensity = { value: edgeIntensity };
+    shader.uniforms.uNoiseScale    = { value: noiseScale };
+    shader.uniforms.uSweep         = { value: sweep };
+    shader.uniforms.uYMin          = { value: yMin };
+    shader.uniforms.uYMax          = { value: yMax };
+
+    shader.vertexShader =
+      'varying vec3 vDisPos;\n' +
+      shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\n  vDisPos = position;',
+      );
+
+    shader.fragmentShader =
+      [
+        'varying vec3 vDisPos;',
+        'uniform float uDissolve;',
+        'uniform float uEdge;',
+        'uniform vec3  uEdgeColor;',
+        'uniform float uEdgeIntensity;',
+        'uniform float uNoiseScale;',
+        'uniform float uSweep;',
+        'uniform float uYMin;',
+        'uniform float uYMax;',
+        'float dvHash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }',
+        'float dvNoise(vec3 x){',
+        '  vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);',
+        '  return mix(mix(mix(dvHash(i + vec3(0,0,0)), dvHash(i + vec3(1,0,0)), f.x),',
+        '                 mix(dvHash(i + vec3(0,1,0)), dvHash(i + vec3(1,1,0)), f.x), f.y),',
+        '             mix(mix(dvHash(i + vec3(0,0,1)), dvHash(i + vec3(1,0,1)), f.x),',
+        '                 mix(dvHash(i + vec3(0,1,1)), dvHash(i + vec3(1,1,1)), f.x), f.y), f.z);',
+        '}',
+        '',
+      ].join('\n') +
+      shader.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        [
+          '#include <emissivemap_fragment>',
+          '{',
+          '  float dNoise = dvNoise(vDisPos * uNoiseScale);',
+          '  float dH = clamp((vDisPos.y - uYMin) / max(uYMax - uYMin, 1e-4), 0.0, 1.0);',
+          '  float dThr = uDissolve * (1.0 + uSweep) - dH * uSweep;',
+          '  if (dNoise < dThr) discard;',
+          '  if (uDissolve > 0.0001) {',
+          '    float dEdge = 1.0 - smoothstep(dThr, dThr + uEdge, dNoise);',
+          '    totalEmissiveRadiance += uEdgeColor * uEdgeIntensity * dEdge;',
+          '  }',
+          '}',
+        ].join('\n'),
+      );
+
+    material.userData.dissolveShader = shader;
+  };
+
+  return material;
 }
 
 const sk = (D, n, k) => D[`stage${n}_${k}`];
@@ -720,6 +808,304 @@ function addStage3(g, D, y) {
   return y;
 }
 
+/* ---------- cover livery palettes ----------
+ *
+ * Each palette drives the procedural paint scheme baked onto the cover
+ * skin. `base` is the big body colour (what changes between colour
+ * modes); the roll pattern + stage bands are the "fixed" black/white
+ * accents that stay constant so the vehicle keeps a consistent
+ * identity; `logoColor` flips light/dark for contrast against `base`.
+ * Phase 2 only wires up `white`; the picker in Phase 3 swaps between
+ * several of these.
+ */
+const COVER_PALETTES = {
+  white: {
+    base:      '#E6E6EA',
+    panelLine: 'rgba(120,120,138,0.30)',
+    ring:      'rgba(95,95,112,0.26)',
+    rivet:     'rgba(80,80,95,0.45)',
+    band:      '#17171c',
+    rollA:     '#111114',
+    rollB:     '#ededf0',
+    logoColor: '#141418',
+    raceway:   0xb8b8c0,
+    ringMetal: 0x2a2a30,
+  },
+};
+
+/* Recolour a monochrome logo silhouette to `color` at the requested
+   pixel size. `source-in` keeps the image's alpha shape but replaces
+   every opaque pixel with the flat fill, so the same single-colour SVG
+   can be tinted light or dark for contrast against any body colour. */
+function tintImage(img, color, w, h) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(2, Math.round(w));
+  c.height = Math.max(2, Math.round(h));
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = true;
+  cx.imageSmoothingQuality = 'high';
+  cx.drawImage(img, 0, 0, c.width, c.height);
+  cx.globalCompositeOperation = 'source-in';
+  cx.fillStyle = color;
+  cx.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
+/* ---------- procedural cover livery texture ----------
+ *
+ * Draws the paint scheme onto a canvas that is mapped onto the cover
+ * lathe. Because the lathe's V coordinate is remapped to normalised
+ * height (see buildCover), texture-V == height/yMax — so bands, rings
+ * and the roll pattern land at exact physical heights. Baking the
+ * detail (and, asynchronously, the logo) into this one texture means it
+ * erodes together with the skin during the dissolve reveal, instead of
+ * detail meshes hanging in mid-air.
+ */
+function buildCoverLivery(palette, geom) {
+  const { yMax, bands = [], rollTop = 0, seams = 28 } = geom;
+  const CW = 2048, CH = 2048;
+  const canvas = document.createElement('canvas');
+  canvas.width = CW; canvas.height = CH;
+  const ctx = canvas.getContext('2d');
+
+  /* CanvasTexture defaults to flipY = true, so texture-V 0 (bottom of
+     the rocket) maps to the BOTTOM row of the canvas. */
+  const vToY = (v) => (1 - v) * CH;
+
+  ctx.fillStyle = palette.base;
+  ctx.fillRect(0, 0, CW, CH);
+
+  /* Vertical panel seams. */
+  ctx.strokeStyle = palette.panelLine;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < seams; i++) {
+    const px = (i / seams) * CW;
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, CH); ctx.stroke();
+  }
+
+  /* Horizontal stiffener rings (~every 1.4 m) with a row of rivet dots. */
+  const ringN = Math.max(2, Math.floor(yMax / 1.4));
+  for (let i = 1; i < ringN; i++) {
+    const py = vToY(i / ringN);
+    ctx.strokeStyle = palette.ring;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(CW, py); ctx.stroke();
+    ctx.fillStyle = palette.rivet;
+    for (let j = 0; j < seams * 2; j++) {
+      const px = (j / (seams * 2)) * CW;
+      ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  /* Dark stage bands (fixed accent) across each interstage span. */
+  ctx.fillStyle = palette.band;
+  for (const b of bands) {
+    const yTop = vToY(b.y1 / yMax);
+    const yBot = vToY(b.y0 / yMax);
+    ctx.fillRect(0, yTop, CW, yBot - yTop);
+  }
+
+  /* Roll pattern near the base — alternating black/white blocks, the
+     classic optical-tracking checkerboard. Fixed accent (never
+     recoloured with the body). */
+  if (rollTop > 0) {
+    const yTop = vToY(rollTop / yMax);
+    const yBot = vToY(0);
+    const cells = 16, rows = 3;
+    const cw = CW / cells, rh = (yBot - yTop) / rows;
+    for (let r = 0; r < rows; r++) {
+      for (let cI = 0; cI < cells; cI++) {
+        ctx.fillStyle = ((r + cI) % 2 === 0) ? palette.rollA : palette.rollB;
+        ctx.fillRect(cI * cw, yTop + r * rh, cw, rh);
+      }
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+
+  return { canvas, ctx, tex, vToY, CW, CH };
+}
+
+/* ---------- removable outer cover (the "real rocket" aeroshell) ----------
+ *
+ * A single continuous outer-mold-line skin lofted from the vehicle's
+ * radius profile: stage-1 barrel → interstage cone → stage-2 barrel →
+ * interstage cone → stage-3 barrel → payload-adapter shoulder →
+ * fairing barrel → ogive nose. Opaque, so by default it hides the
+ * detailed internals and the vehicle reads as a finished rocket.
+ *
+ * The skin carries a baked procedural livery texture (panel lines,
+ * rings, stage bands, roll pattern, and — loaded async — the company
+ * logo). A couple of raised geometry accents (a cable raceway running
+ * the body and a base structural ring) add real 3D relief. Every cover
+ * material is a dissolve material driven by the same `uDissolve`, so
+ * the whole assembly erodes together during the reveal.
+ *
+ * `m` carries the axial milestones already computed inside buildRocket
+ * so we don't re-derive stack heights here.
+ */
+function buildCover(D, m) {
+  const R1 = D.stage1_radius;
+  const R2 = D.stage2_radius;
+  const R3 = D.stage3_radius;
+  const fRad = D.fairing_radius * 1.15;
+
+  /* (y, r) profile, bottom → top. Same-y / different-r pairs form flat
+     shoulder rings (e.g. the payload adapter where the body steps out
+     to the wider fairing). */
+  const raw = [
+    [0,         R1],
+    [m.s1Top,   R1],
+    [m.is12Top, R2],
+    [m.s2Top,   R2],
+    [m.is23Top, R3],
+    [m.fBot,    R3],
+    [m.fBot,    fRad],
+    [m.fBot + m.fCylH, fRad],
+  ];
+  const M = 40;
+  for (let i = 1; i <= M; i++) {
+    const s = i / M;
+    const r = fRad * Math.sqrt(Math.max(1 - s * s, 0));
+    raw.push([m.fBot + m.fCylH + s * m.fNoseH, Math.max(r, 0.001)]);
+  }
+
+  /* Enforce strictly-ascending Y so the lathe never self-inverts even
+     if the geometry's relative heights come out unusual. */
+  const pts = [];
+  let prevY = -Infinity;
+  for (const [yy, rr] of raw) {
+    const y = yy <= prevY ? prevY + 1e-4 : yy;
+    pts.push(new THREE.Vector2(Math.max(rr, 0.001), y));
+    prevY = y;
+  }
+  const yMax = pts[pts.length - 1].y;
+
+  /* Interpolate the outer radius at any height — used to lay the raised
+     accents (raceway, base ring) just proud of the skin. */
+  const radiusAt = (y) => {
+    if (y <= pts[0].y) return pts[0].x;
+    for (let i = 1; i < pts.length; i++) {
+      if (y <= pts[i].y) {
+        const span = pts[i].y - pts[i - 1].y || 1;
+        const t = (y - pts[i - 1].y) / span;
+        return pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t;
+      }
+    }
+    return pts[pts.length - 1].x;
+  };
+
+  const palette = COVER_PALETTES.white;
+
+  /* Livery texture. Bands sit on the two interstages; roll pattern
+     covers the bottom ~5% of the vehicle. */
+  const bands = [
+    { y0: m.s1Top, y1: m.is12Top },
+    { y0: m.s2Top, y1: m.is23Top },
+  ];
+  const livery = buildCoverLivery(palette, {
+    yMax,
+    bands,
+    rollTop: yMax * 0.05,
+    seams: 30,
+  });
+
+  /* Main skin lathe. Colour left white so the baked texture shows
+     through unmodulated; V remapped to normalised height so the livery
+     lines up with real heights. */
+  const material = makeDissolveMaterial(
+    0xffffff,
+    { rough: 0.5, metal: 0.12, coat: 0.35, coatR: 0.2, env: 0.55, double: true },
+    { yMin: 0, yMax, noiseScale: 3.0, sweep: 0.55 },
+  );
+  material.map = livery.tex;
+
+  const geo = new THREE.LatheGeometry(pts, SEG);
+  const posAttr = geo.attributes.position;
+  const uvAttr = geo.attributes.uv;
+  for (let i = 0; i < posAttr.count; i++) {
+    uvAttr.setY(i, posAttr.getY(i) / yMax);
+  }
+  uvAttr.needsUpdate = true;
+
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.userData.coverMember = true;
+
+  const group = new THREE.Group();
+  group.userData.cover = true;
+  group.add(mesh);
+
+  const materials = [material];
+  const dissolveOpts = { yMin: 0, yMax, noiseScale: 3.0, sweep: 0.55 };
+
+  /* Cable raceway — a raised conduit running the body length on one
+     side, following the stepped radius. Built in absolute coordinates
+     so its object-space Y is the true height and the dissolve sweep
+     matches the skin. */
+  const rcAngle = Math.PI * 0.82;
+  const rcTop = m.fBot;
+  const rcBot = yMax * 0.04;
+  const rcPts = [];
+  const RCN = 48;
+  for (let i = 0; i <= RCN; i++) {
+    const y = rcBot + (rcTop - rcBot) * (i / RCN);
+    const r = radiusAt(y) * 1.004 + fRad * 0.006;
+    rcPts.push(new THREE.Vector3(Math.cos(rcAngle) * r, y, Math.sin(rcAngle) * r));
+  }
+  const rcMat = makeDissolveMaterial(
+    palette.raceway, { metal: 0.5, rough: 0.35, coat: 0.2 }, dissolveOpts,
+  );
+  group.add(new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rcPts), RCN, fRad * 0.022, 8, false),
+    rcMat,
+  ));
+  materials.push(rcMat);
+
+  /* Base structural ring. Geometry is translated so its Y is absolute
+     (mesh stays at the origin), keeping the dissolve height correct. */
+  const ringY = yMax * 0.03;
+  const ringGeo = new THREE.TorusGeometry(R1 * 1.004, R1 * 0.02, 10, SEG);
+  ringGeo.rotateX(Math.PI / 2);
+  ringGeo.translate(0, ringY, 0);
+  const ringMat = makeDissolveMaterial(
+    palette.ringMetal, { metal: 0.6, rough: 0.3 }, dissolveOpts,
+  );
+  group.add(new THREE.Mesh(ringGeo, ringMat));
+  materials.push(ringMat);
+
+  /* Async logo baker. Loads the (monochrome) company logo, tints it for
+     contrast against the body colour, and stamps it onto the livery
+     canvas at the stage-2 barrel height, mirrored on both sides so a
+     mark is always in view as the rocket rotates. `isAlive` guards
+     against the modal closing before the SVG finishes decoding. */
+  const applyLogo = (isAlive) => {
+    if (typeof window === 'undefined') return;
+    loadImage(DECAL_LOGO_URL).then((img) => {
+      if (!isAlive || !isAlive()) return;
+      const aspect = (img.naturalWidth && img.naturalHeight)
+        ? img.naturalWidth / img.naturalHeight : 4.59;
+      const logoCenterY = (m.is12Top + m.s2Top) / 2;
+      const arcFrac = 0.26;                      // fraction of circumference
+      const physW = arcFrac * 2 * Math.PI * R2;  // metres around at R2
+      const physH = physW / aspect;
+      const boxW = arcFrac * livery.CW;
+      const boxH = (physH / yMax) * livery.CH;
+      const topY = livery.vToY(logoCenterY / yMax) - boxH / 2;
+      const tinted = tintImage(img, palette.logoColor, boxW, boxH);
+      for (const uCenter of [0.25, 0.75]) {
+        livery.ctx.drawImage(tinted, uCenter * livery.CW - boxW / 2, topY, boxW, boxH);
+      }
+      livery.tex.needsUpdate = true;
+    }).catch(() => { /* silent — livery logo is cosmetic */ });
+  };
+
+  return { group, materials, yMin: 0, yMax, applyLogo };
+}
+
 /* ---------- full rocket assembly with per-stage subgroups ----------
  *
  * Each stage / interstage / payload / fairing is assembled into its
@@ -772,13 +1158,10 @@ function buildRocket(D) {
   tagSince(inter12, is12Mark, infoInterstage(1, 2, D), { yBot: is12bot, yTop: y });
   const is12Top = y;
 
-  /* Stage 2 — also captures the ox-cyl bounds so the company decals
-     can be wrapped onto its largest opaque cylindrical panel. */
+  /* Stage 2. */
   const s2bot = y;
   const s2Result = addStage12(stage2, D, 2, y);
   y = s2Result.y;
-  const s2OxCylBot = s2Result.oxCylBot;
-  const s2OxCylTop = s2Result.oxCylTop;
   const s2Top = y;
 
   /* Interstage 2-3 — same no-bottom-ring rule as inter12. */
@@ -914,6 +1297,14 @@ function buildRocket(D) {
   addFins(stage2, s2bot,    D.stage2_radius, 4, sk(D, 2, 'engine_length'));
   addFins(stage3, s3engBot, D.stage3_radius, 3, sk(D, 3, 'engine_length'));
 
+  /* Removable outer cover — the opaque "finished rocket" aeroshell.
+     Built from the axial milestones computed above and parented to the
+     root so it spins / tilts with the vehicle. On by default; the modal
+     dissolves it away to reveal the internals below. */
+  const coverBuilt = buildCover(D, {
+    s1Top, is12Top, s2Top, is23Top, fBot, fCylH, fNoseH,
+  });
+
   /* Assemble root. */
   root.add(stage1);
   root.add(inter12);
@@ -923,6 +1314,7 @@ function buildRocket(D) {
   root.add(payload);
   root.add(fairing);
   root.add(shell);
+  root.add(coverBuilt.group);
 
   /* ---------- equal-spacing disassemble offsets ----------
    *
@@ -997,6 +1389,13 @@ function buildRocket(D) {
     group: root,
     totalH,
     maxRadius,
+    /* Removable outer cover — the group is toggled/faded by the tick
+       loop via its material's `uDissolve` uniform. */
+    coverGroup: coverBuilt.group,
+    coverMaterials: coverBuilt.materials,
+    /* Async logo baker for the cover livery — called by
+       setupRocketScene with the scene's `running` guard. */
+    applyCoverLogo: coverBuilt.applyLogo,
     explodeTargets: partGroups.map((g, i) => ({ group: g, offset: offsets[i] })),
     /* Full-vehicle span for the "total length" dimension line.
        `bottom` is stage 1's base (offset 0, stays grounded);
@@ -1020,17 +1419,6 @@ function buildRocket(D) {
       totalHeight: totalH,
       stage1Top: s1Top,
       is12Top, s2Top, is23Top, s3Top, plTop, fTop,
-    },
-    /* Where to drop external company decals so they sit on the
-       largest opaque cylindrical surface in the rocket — the stage 2
-       oxidizer tank. The decal placer in setupRocketScene reads
-       this to position both halves (φ=0 and φ=π) at the right
-       height, parented inside `stage2` so they explode with it. */
-    decalAnchor: {
-      stageGroup: stage2,
-      radius: D.stage2_radius + 0.012,
-      cylBot: s2OxCylBot,
-      cylTop: s2OxCylTop,
     },
   };
 }
@@ -1128,37 +1516,15 @@ function buildSpaceBackground() {
   return new THREE.CanvasTexture(c);
 }
 
-/* ---------- company decals (logo + flag) ----------
+/* ---------- company logo ----------
  *
- * Wraps two image-textured cylindrical sleeves around the stage 2
- * oxidizer tank — vertically stacked (logo on top, flag below) and
- * mirrored at φ=180° so a decal block is always in view as the
- * rocket rotates. Stage 2's ox tank is the largest opaque
- * cylindrical surface in the rocket, mid-height for an eye-level
- * read; the same placement convention real launch vehicles use
- * (Falcon 9 X-mark + flag, Atlas V wordmark + flag, Shavit-2 flag
- * + ISA wordmark).
- *
- * Both files are SVGs — we rasterize each one to a 1024-wide
- * canvas (preserving aspect) before handing it to a CanvasTexture
- * so the GPU samples a clean bitmap at all camera distances.
- *
- * Asset URLs come from webpack's `import` machinery (top of file)
- * so they bundle correctly in dev and prod, and survive subpath
- * deploys where the dev-server proxy would otherwise swallow
- * `/public/` requests as API calls.
+ * The single-colour company mark (which already incorporates the
+ * national flag) is baked into the cover's livery texture by
+ * buildCover's `applyLogo`. It's loaded lazily from webpack's import
+ * URL so it bundles correctly in dev/prod and survives subpath deploys.
  */
 
 const DECAL_LOGO_URL = companyLogoUrl;
-const DECAL_FLAG_URL = israelFlagUrl;
-
-/* Layout knobs — arc widths, gap, fallback aspects (used until we
-   know the rasterized image's true natural size). */
-const DECAL_LOGO_ARC = Math.PI * 0.78;   // ~140°, fills most of one half
-const DECAL_FLAG_ARC = Math.PI * 0.22;   //  ~40°, smaller / wider stripe
-const DECAL_GAP = 0.10;
-const DECAL_LOGO_FALLBACK_ASPECT = 3.0;
-const DECAL_FLAG_FALLBACK_ASPECT = 1.5;
 
 function loadImage(url) {
   return new Promise((resolve, reject) => {
@@ -1167,90 +1533,6 @@ function loadImage(url) {
     img.onerror = () => reject(new Error(`failed to load ${url}`));
     img.src = url;
   });
-}
-
-function rasterizeAndMaterial(img, fallbackAspect) {
-  const aspect = (img.naturalWidth && img.naturalHeight)
-    ? img.naturalWidth / img.naturalHeight
-    : fallbackAspect;
-  const W = 1024;
-  const H = Math.max(8, Math.round(W / aspect));
-  const cvs = document.createElement('canvas');
-  cvs.width = W; cvs.height = H;
-  const ctx = cvs.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, 0, 0, W, H);
-
-  const tex = new THREE.CanvasTexture(cvs);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
-
-  const material = new THREE.MeshBasicMaterial({
-    map: tex,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    /* polygonOffset pulls the decal slightly toward the camera
-       relative to the cylinder it sits on, so we don't z-fight
-       with the underlying ox tank surface. */
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits:  -4,
-  });
-  return { material, aspect };
-}
-
-function addDecalSleeves(group, material, arcAngle, decalR, h, centerY) {
-  for (let i = 0; i < 2; i++) {
-    const geo = new THREE.CylinderGeometry(
-      decalR, decalR, h,
-      64, 1, true,
-      Math.PI * i - arcAngle / 2,   // start angle: 0° one side, 180° the other
-      arcAngle,                     // sweep angle (the visible arc width)
-    );
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.position.y = centerY;
-    group.add(mesh);
-  }
-}
-
-function applyCompanyDecals(anchor, isAlive) {
-  if (!anchor || typeof window === 'undefined') return;
-  const { stageGroup, radius, cylBot, cylTop } = anchor;
-  const cylSpan = cylTop - cylBot;
-
-  Promise.all([
-    loadImage(DECAL_LOGO_URL).catch(() => null),
-    loadImage(DECAL_FLAG_URL).catch(() => null),
-  ]).then(([logoImg, flagImg]) => {
-    if (!isAlive()) return;
-
-    /* Compute heights from the loaded images' actual aspect ratios,
-       then center the stacked block in the upper 60% of the ox tank
-       so it sits high on the stage rather than at the visual base. */
-    const logo = logoImg ? rasterizeAndMaterial(logoImg, DECAL_LOGO_FALLBACK_ASPECT) : null;
-    const flag = flagImg ? rasterizeAndMaterial(flagImg, DECAL_FLAG_FALLBACK_ASPECT) : null;
-
-    const logoH = logo ? (DECAL_LOGO_ARC * radius) / logo.aspect : 0;
-    const flagH = flag ? (DECAL_FLAG_ARC * radius) / flag.aspect : 0;
-    const blockH = logoH + (logo && flag ? DECAL_GAP : 0) + flagH;
-
-    /* Bias toward the upper half of the cylinder for a more
-       "professional vehicle-livery" feel — matches Falcon 9 / Atlas
-       layouts where decals sit visually above mid-stage. */
-    const blockBot = cylBot + (cylSpan - blockH) * 0.62;
-
-    if (flag) {
-      const flagCenter = blockBot + flagH / 2;
-      addDecalSleeves(stageGroup, flag.material, DECAL_FLAG_ARC, radius, flagH, flagCenter);
-    }
-    if (logo) {
-      const logoBot = blockBot + flagH + (logo && flag ? DECAL_GAP : 0);
-      const logoCenter = logoBot + logoH / 2;
-      addDecalSleeves(stageGroup, logo.material, DECAL_LOGO_ARC, radius, logoH, logoCenter);
-    }
-  }).catch(() => { /* silent — decals are cosmetic */ });
 }
 
 /* ---------- public entrypoint ----------
@@ -1309,6 +1591,8 @@ export function setupRocketScene(container, data, options = {}) {
   const built = buildRocket(data);
   const rocketInner          = built.group;
   const totalH               = built.totalH;
+  const coverGroup           = built.coverGroup;
+  const coverMaterials       = built.coverMaterials || [];
   const explodeTargets       = built.explodeTargets;
   const stageMeta            = built.meta;
   const disassembledMidWorld = built.disassembledMidWorld;
@@ -1319,12 +1603,12 @@ export function setupRocketScene(container, data, options = {}) {
   rocket.add(rocketInner);
   scene.add(rocket);
 
-  /* Wrap company decals (logo + flag) on stage 2's oxidizer tank,
-     mirrored on both sides at φ = 0 and φ = π. Loaded asynchronously
-     — `running` doubles as a "still mounted?" guard so an SVG that
-     finishes parsing after the user closes the modal doesn't try to
-     attach itself to a torn-down scene. */
-  applyCompanyDecals(built.decalAnchor, () => running);
+  /* Bake the company logo (which already includes the flag) onto the
+     cover's livery, mirrored on both sides. Loaded asynchronously —
+     `running` doubles as a "still mounted?" guard so an SVG that
+     finishes decoding after the user closes the modal doesn't touch a
+     torn-down scene. */
+  built.applyCoverLogo?.(() => running);
 
   /* The outer shell + its stiffener rings + access panels are a
      single rigid root-level group that wraps the whole vehicle.
@@ -1839,6 +2123,14 @@ export function setupRocketScene(container, data, options = {}) {
   let explodeCurrent = 0;
   let lastDolly = 1;
 
+  /* Outer-cover dissolve. `coverTarget` 0 = cover fully present
+     (finished rocket), 1 = fully dissolved (internals revealed).
+     `coverCurrent` chases it with a slow lerp so the noise erosion +
+     glowing edge reads as a deliberate reveal. Starts at 0 → the
+     vehicle opens covered. */
+  let coverTarget = 0;
+  let coverCurrent = 0;
+
   /* Manual pan offset (world space). The tick loop normally drives
      `ctrl.target` from the focus slider + explode shift; if pan just
      wrote to `ctrl.target` directly, that lerp would yank it back
@@ -1924,6 +2216,16 @@ export function setupRocketScene(container, data, options = {}) {
     for (const e of explodeTargets) {
       e.group.position.y = e.offset * explodeCurrent;
     }
+
+    /* Cover dissolve lerp. Push the current progress into every cover
+       material's `uDissolve`; hide the group once fully dissolved so it
+       stops costing draw calls / raycasts against the internals. */
+    coverCurrent += (coverTarget - coverCurrent) * 0.045;
+    for (const cm of coverMaterials) {
+      const sh = cm.userData?.dissolveShader;
+      if (sh) sh.uniforms.uDissolve.value = coverCurrent;
+    }
+    if (coverGroup) coverGroup.visible = coverCurrent < 0.999;
 
     /* If we just dropped below the tooltip-availability threshold
        (rocket is reassembling), hide any active component tooltip
@@ -2045,9 +2347,24 @@ export function setupRocketScene(container, data, options = {}) {
       cam.position.add(delta);
       panOffset.add(delta);
     },
-    /** `on` toggles between assembled (0) and exploded (1). Smooth lerp. */
+    /** `on` toggles between assembled (0) and exploded (1). Smooth lerp.
+     *  Disassembling auto-dissolves the outer cover first — you can't
+     *  meaningfully pull apart a rocket that's still wrapped in its
+     *  skin, so the reveal rides along with the explode. */
     setExploded(on) {
       explodeTarget = on ? 1 : 0;
+      if (on) coverTarget = 1;
+    },
+    /** Show (`on = true`) or dissolve away (`on = false`) the outer
+     *  cover. */
+    setCover(on) {
+      coverTarget = on ? 0 : 1;
+    },
+    /** Toggle the outer cover. Returns the new on/off state (true =
+     *  cover present) so the modal can sync its button label. */
+    toggleCover() {
+      coverTarget = coverTarget > 0.5 ? 0 : 1;
+      return coverTarget < 0.5;
     },
     /** Reset the camera to the cinematic landing position, plus
      *  unhide everything (cancel explode / focus). Tilt resets to
@@ -2057,6 +2374,7 @@ export function setupRocketScene(container, data, options = {}) {
       tiltTarget = -Math.PI / 2;
       focusTarget = totalH * 0.02;
       explodeTarget = 0;
+      coverTarget = 0;
       lastDolly = 1;
       panOffset.set(0, 0, 0);
       rocketInner.rotation.y = 0;

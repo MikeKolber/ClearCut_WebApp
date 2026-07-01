@@ -38,6 +38,9 @@ function RocketViewerModal({ onClose }) {
   const [horizontal, setHorizontal] = useState(true);
   const [focusFrac, setFocusFrac] = useState(0.5);
   const [exploded, setExploded] = useState(false);
+  /* Outer cover on by default — the viewer opens on the finished,
+     wrapped rocket and the user dissolves it to reveal the internals. */
+  const [coverOn, setCoverOn] = useState(true);
 
   // Step 1 — fetch the rocket geometry from the backend.
   useEffect(() => {
@@ -113,6 +116,13 @@ function RocketViewerModal({ onClose }) {
     const next = !exploded;
     setExploded(next);
     sceneRef.current?.setExploded?.(next);
+    /* Disassembling auto-dissolves the cover in the scene, so keep the
+       cover button's label in sync. */
+    if (next) setCoverOn(false);
+  };
+  const onToggleCover = () => {
+    const coverNowOn = sceneRef.current?.toggleCover?.();
+    if (typeof coverNowOn === 'boolean') setCoverOn(coverNowOn);
   };
   const onResetView = () => {
     sceneRef.current?.resetView?.();
@@ -120,6 +130,7 @@ function RocketViewerModal({ onClose }) {
     setHorizontal(false);
     setFocusFrac(0.5);
     setAutoRotate(true);
+    setCoverOn(true);
   };
   const onFocusInput = (e) => {
     const v = Number(e.target.value);
@@ -257,6 +268,30 @@ function RocketViewerModal({ onClose }) {
                   vertical/horizontal, reset) underneath at the
                   smaller default size. */}
               <div className="RVM-toolbar">
+                {/* Outer-cover control. Sits above Disassemble as its
+                    own primary action: dissolves the finished-rocket
+                    skin away to expose the internal structure. The
+                    wrapping div is the anchor for the colour-mode
+                    flyout added in a later phase. */}
+                <div className="RVM-cover-control">
+                  <button
+                    type="button"
+                    className={`RVM-toolbtn-primary RVM-toolbtn-cover${coverOn ? '' : ' RVM-toolbtn-cover--off'}`}
+                    onClick={onToggleCover}
+                    title={
+                      coverOn
+                        ? 'Dissolve the outer shell to reveal the internal structure'
+                        : 'Restore the outer shell'
+                    }
+                  >
+                    <span className="RVM-toolbtn-primary-glyph" aria-hidden="true">
+                      {coverOn ? '◐' : '○'}
+                    </span>
+                    <span className="RVM-toolbtn-primary-label">
+                      {coverOn ? 'Reveal Internals' : 'Restore Shell'}
+                    </span>
+                  </button>
+                </div>
                 <button
                   type="button"
                   className={`RVM-toolbtn-primary${exploded ? ' RVM-toolbtn-primary--on' : ''}`}
