@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Iterable
@@ -208,7 +209,11 @@ class R2EngineTestStorage(EngineTestStorage):
     # Name of the single virtual "test" the frontend sees for R2 mode.
     _VIRTUAL_TEST_NAME = "data"
 
-    _LIST_TTL_S = 30.0           # tiny in-memory cache for landing-page polls
+    # Bumped from 30s to 90s since bucket contents change on the order
+    # of hours/days (someone drops in a new test folder), not seconds.
+    # 90s trades some staleness after upload for far fewer R2 round-trips
+    # during normal browsing.
+    _LIST_TTL_S = 90.0
     _CACHE_DIRNAME = "cc_engine_test_cache"
     _PRESIGNED_URL_LIFETIME_S = 3600  # 1 hour
 
@@ -232,8 +237,23 @@ class R2EngineTestStorage(EngineTestStorage):
         )
         self._cache_dir = Path(tempfile.gettempdir()) / self._CACHE_DIRNAME
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-        self._list_cache_t: float = 0.0
-        self._list_cache_v: list[dict] = []
+        # Shared full-bucket snapshot. Both list_tests and list_test_files
+        # derive from this list, so scanning R2 once serves both endpoints.
+        self._snapshot_t: float = 0.0
+        self._snapshot: list[dict] = []
+        self._snapshot_lock = threading.Lock()
+
+        # Pre-warm the cache in a background thread so the first user
+        # click on Engine Test doesn't wait a whole R2 round-trip.
+        # Silent failure is fine — if the pre-warm dies, the real
+        # request will retry and surface the error properly.
+        try:
+            threading.Thread(
+                target=self._safe_prewarm, daemon=True,
+                name="r2-engine-test-prewarm",
+            ).start()
+        except Exception:
+            pass
 
     @property
     def description(self) -> str:
@@ -276,41 +296,70 @@ class R2EngineTestStorage(EngineTestStorage):
             return False
         return True
 
+    def _safe_prewarm(self) -> None:
+        """Background thread entry-point that warms the snapshot cache
+        at construction time. Swallows all errors — the real request
+        path will bubble any real problems up to the user."""
+        try:
+            self._snapshot_bucket()
+        except Exception:
+            pass
+
+    def _snapshot_bucket(self) -> list[dict]:
+        """Full-bucket scan with an LRU-ish TTL cache. Both `list_tests`
+        and `list_test_files` read from this so a single R2 round-trip
+        serves the whole Engine Test page load. Guarded by a lock so
+        two concurrent misses don't stampede R2 with duplicate scans."""
+        now = time.time()
+        # Fast path: cache still fresh (no lock needed for a stale read).
+        if self._snapshot and now - self._snapshot_t < self._LIST_TTL_S:
+            return self._snapshot
+
+        with self._snapshot_lock:
+            # Recheck under lock — another thread may have refreshed
+            # while we were waiting.
+            now = time.time()
+            if self._snapshot and now - self._snapshot_t < self._LIST_TTL_S:
+                return self._snapshot
+
+            snapshot: list[dict] = []
+            for obj in self._list_all_objects(self._prefix):
+                rel = self._strip_prefix(obj["Key"])
+                if not rel or rel.endswith("/"):
+                    continue
+                ext = Path(rel).suffix.lower()
+                # Skip the aux tdms_index files and anything else we
+                # don't surface, so the cached snapshot is exactly what
+                # both endpoints will use.
+                if ext != _TDMS_EXTENSION and ext not in VIDEO_EXTENSIONS:
+                    continue
+                snapshot.append({
+                    "name": rel,
+                    "size_bytes": obj.get("Size", 0),
+                    "mtime": (
+                        obj["LastModified"].timestamp()
+                        if obj.get("LastModified") else 0.0
+                    ),
+                    "_ext": ext,
+                })
+            self._snapshot = snapshot
+            self._snapshot_t = time.time()
+            return snapshot
+
     # ── interface ──────────────────────────────────────────────────────
 
     def list_tests(self) -> list[dict]:
-        """The whole bucket is presented as ONE virtual test. We still
-        scan every object to give the sidebar an accurate file count."""
-        now = time.time()
-        if now - self._list_cache_t < self._LIST_TTL_S:
-            return list(self._list_cache_v)
-
-        tdms_count = 0
-        video_count = 0
-        any_found = False
-        for obj in self._list_all_objects(self._prefix):
-            rel = self._strip_prefix(obj["Key"])
-            if not rel or rel.endswith("/"):
-                continue
-            any_found = True
-            ext = Path(rel).suffix.lower()
-            if ext == _TDMS_EXTENSION:
-                tdms_count += 1
-            elif ext in VIDEO_EXTENSIONS:
-                video_count += 1
-
-        if not any_found:
-            out: list[dict] = []
-        else:
-            out = [{
-                "name": self._VIRTUAL_TEST_NAME,
-                "tdms_count": tdms_count,
-                "video_count": video_count,
-            }]
-
-        self._list_cache_t = now
-        self._list_cache_v = out
-        return list(out)
+        """The whole bucket is presented as ONE virtual test."""
+        snapshot = self._snapshot_bucket()
+        if not snapshot:
+            return []
+        tdms_count = sum(1 for e in snapshot if e["_ext"] == _TDMS_EXTENSION)
+        video_count = sum(1 for e in snapshot if e["_ext"] in VIDEO_EXTENSIONS)
+        return [{
+            "name": self._VIRTUAL_TEST_NAME,
+            "tdms_count": tdms_count,
+            "video_count": video_count,
+        }]
 
     def list_test_files(self, test_name: str) -> dict | None:
         """List every TDMS + video anywhere under the bucket prefix.
@@ -319,31 +368,18 @@ class R2EngineTestStorage(EngineTestStorage):
         endpoints can round-trip it back into an R2 key."""
         if test_name != self._VIRTUAL_TEST_NAME:
             return None
-
+        snapshot = self._snapshot_bucket()
+        if not snapshot:
+            return None
         tdms_files: list[dict] = []
         video_files: list[dict] = []
-        any_found = False
-
-        for obj in self._list_all_objects(self._prefix):
-            rel = self._strip_prefix(obj["Key"])
-            if not rel or rel.endswith("/"):
-                continue
-            any_found = True
-            entry = {
-                "name": rel,
-                "size_bytes": obj.get("Size", 0),
-                "mtime": (
-                    obj["LastModified"].timestamp()
-                    if obj.get("LastModified") else 0.0
-                ),
-            }
-            ext = Path(rel).suffix.lower()
-            if ext == _TDMS_EXTENSION:
+        for e in snapshot:
+            entry = {k: v for k, v in e.items() if not k.startswith("_")}
+            if e["_ext"] == _TDMS_EXTENSION:
                 tdms_files.append(entry)
-            elif ext in VIDEO_EXTENSIONS:
+            elif e["_ext"] in VIDEO_EXTENSIONS:
                 video_files.append(entry)
-
-        if not any_found:
+        if not tdms_files and not video_files:
             return None
         tdms_files.sort(key=lambda e: e["name"])
         video_files.sort(key=lambda e: e["name"])
