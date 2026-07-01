@@ -191,12 +191,22 @@ class LocalDiskEngineTestStorage(EngineTestStorage):
 # ---------------------------------------------------------------------------
 
 class R2EngineTestStorage(EngineTestStorage):
-    """Bucket layout:
-        {prefix}{test_name}/{file_name}
+    """R2-backed storage that presents *the entire bucket* as a single
+    virtual "test". All files anywhere under the bucket prefix are
+    surfaced as one flat list — TDMS files show up in `tdms_files`,
+    video files in `video_files`, and each file's `name` includes its
+    subfolder path (e.g. `TDMS/Results_2026_05_28_11_50_51.tdms`).
 
-    `prefix` (CC_R2_PREFIX) is optional and defaults to empty, in which
-    case test folders sit at the bucket root. Use a prefix if you're
-    sharing the bucket with other apps."""
+    Why one virtual test instead of "one folder = one test"? Real-world
+    engine-test data isn't always neatly grouped into per-run folders;
+    ours is split by file type (TDMS/, HighSpeed/, ...) at the bucket
+    root. Aggregating everything under a single browsable "test" lets
+    users find all recordings regardless of where they live in the
+    bucket. Local-disk mode keeps its per-folder semantics for the
+    desktop-style workflow."""
+
+    # Name of the single virtual "test" the frontend sees for R2 mode.
+    _VIRTUAL_TEST_NAME = "data"
 
     _LIST_TTL_S = 30.0           # tiny in-memory cache for landing-page polls
     _CACHE_DIRNAME = "cc_engine_test_cache"
@@ -231,11 +241,6 @@ class R2EngineTestStorage(EngineTestStorage):
 
     # ── helpers ────────────────────────────────────────────────────────
 
-    def _full_key(self, test_name: str, file_name: str | None = None) -> str:
-        if file_name is None:
-            return f"{self._prefix}{test_name}/"
-        return f"{self._prefix}{test_name}/{file_name}"
-
     def _strip_prefix(self, key: str) -> str:
         if self._prefix and key.startswith(self._prefix):
             return key[len(self._prefix):]
@@ -255,54 +260,75 @@ class R2EngineTestStorage(EngineTestStorage):
             token = resp.get("NextContinuationToken")
 
     @staticmethod
-    def _is_safe_name(name: str) -> bool:
-        """Reject empty, dotfile, and any path-separator-bearing names so
-        we can't build keys that escape the bucket prefix."""
-        return bool(name) and not name.startswith(".") and "/" not in name and "\\" not in name
+    def _is_safe_relpath(name: str) -> bool:
+        """Reject empty names, `..` (path escape), and backslashes
+        (would confuse Windows-style clients). Slashes ARE allowed —
+        S3 keys are a flat string namespace and files inside subfolders
+        naturally carry slashes in their display name."""
+        if not name:
+            return False
+        if "\\" in name:
+            return False
+        if ".." in name.split("/"):
+            return False
+        # No leading slash (would create a key like "//foo").
+        if name.startswith("/"):
+            return False
+        return True
 
     # ── interface ──────────────────────────────────────────────────────
 
     def list_tests(self) -> list[dict]:
+        """The whole bucket is presented as ONE virtual test. We still
+        scan every object to give the sidebar an accurate file count."""
         now = time.time()
         if now - self._list_cache_t < self._LIST_TTL_S:
             return list(self._list_cache_v)
 
-        groups: dict[str, dict] = {}
+        tdms_count = 0
+        video_count = 0
+        any_found = False
         for obj in self._list_all_objects(self._prefix):
             rel = self._strip_prefix(obj["Key"])
-            if "/" not in rel:
+            if not rel or rel.endswith("/"):
                 continue
-            test_name, _, rest = rel.partition("/")
-            if not test_name or test_name.startswith(".") or not rest:
-                continue
-            entry = groups.setdefault(
-                test_name,
-                {"name": test_name, "tdms_count": 0, "video_count": 0},
-            )
-            ext = Path(rest).suffix.lower()
+            any_found = True
+            ext = Path(rel).suffix.lower()
             if ext == _TDMS_EXTENSION:
-                entry["tdms_count"] += 1
+                tdms_count += 1
             elif ext in VIDEO_EXTENSIONS:
-                entry["video_count"] += 1
+                video_count += 1
 
-        out = sorted(groups.values(), key=lambda d: d["name"])
+        if not any_found:
+            out: list[dict] = []
+        else:
+            out = [{
+                "name": self._VIRTUAL_TEST_NAME,
+                "tdms_count": tdms_count,
+                "video_count": video_count,
+            }]
+
         self._list_cache_t = now
         self._list_cache_v = out
         return list(out)
 
     def list_test_files(self, test_name: str) -> dict | None:
-        if not self._is_safe_name(test_name):
+        """List every TDMS + video anywhere under the bucket prefix.
+        The `name` field on each entry is the full relative path
+        (e.g. `TDMS/Results_2026_05_28_11_50_51.tdms`) so downstream
+        endpoints can round-trip it back into an R2 key."""
+        if test_name != self._VIRTUAL_TEST_NAME:
             return None
-        prefix = self._full_key(test_name)
+
         tdms_files: list[dict] = []
         video_files: list[dict] = []
         any_found = False
 
-        for obj in self._list_all_objects(prefix):
-            any_found = True
-            rel = obj["Key"][len(prefix):]
-            if not rel or "/" in rel:
+        for obj in self._list_all_objects(self._prefix):
+            rel = self._strip_prefix(obj["Key"])
+            if not rel or rel.endswith("/"):
                 continue
+            any_found = True
             entry = {
                 "name": rel,
                 "size_bytes": obj.get("Size", 0),
@@ -328,11 +354,13 @@ class R2EngineTestStorage(EngineTestStorage):
         }
 
     def open_tdms_file(self, test_name: str, file_name: str) -> str | None:
-        if not self._is_safe_name(test_name) or not self._is_safe_name(file_name):
+        if test_name != self._VIRTUAL_TEST_NAME:
+            return None
+        if not self._is_safe_relpath(file_name):
             return None
         if Path(file_name).suffix.lower() != _TDMS_EXTENSION:
             return None
-        key = self._full_key(test_name, file_name)
+        key = f"{self._prefix}{file_name}"
         try:
             head = self._client.head_object(Bucket=self._bucket, Key=key)
         except Exception:
@@ -359,12 +387,14 @@ class R2EngineTestStorage(EngineTestStorage):
     def video_response(self, test_name: str, file_name: str):
         from flask import jsonify, redirect
 
-        if not self._is_safe_name(test_name) or not self._is_safe_name(file_name):
+        if test_name != self._VIRTUAL_TEST_NAME:
+            return None
+        if not self._is_safe_relpath(file_name):
             return None
         if Path(file_name).suffix.lower() not in VIDEO_EXTENSIONS:
             return jsonify({"error": "expected a video file"}), 400
 
-        key = self._full_key(test_name, file_name)
+        key = f"{self._prefix}{file_name}"
         try:
             self._client.head_object(Bucket=self._bucket, Key=key)
         except Exception:
