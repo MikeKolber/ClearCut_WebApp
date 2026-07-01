@@ -846,7 +846,9 @@ const COVER_PALETTES = {
     logoColor: '#f2f2f6',
     raceway:   0x2c2c33,
     ringMetal: 0x101013,
-    skinRough: 0.52, skinMetal: 0.26, skinCoat: 0.22, skinEnv: 0.5,
+    /* Painted (dielectric) finish — near-zero metalness + low env so
+       the dark curved body doesn't sparkle/shimmer as it spins. */
+    skinRough: 0.62, skinMetal: 0.04, skinCoat: 0.08, skinEnv: 0.26,
   },
   darkblue: {
     base:      '#1a2740',
@@ -859,7 +861,8 @@ const COVER_PALETTES = {
     logoColor: '#eef3fb',
     raceway:   0x2a3a58,
     ringMetal: 0x101828,
-    skinRough: 0.5, skinMetal: 0.22, skinCoat: 0.24, skinEnv: 0.5,
+    /* Painted (dielectric) finish — matte navy, minimal reflections. */
+    skinRough: 0.6, skinMetal: 0.05, skinCoat: 0.10, skinEnv: 0.28,
   },
   metal: {
     base:      '#b8bcc4',
@@ -872,8 +875,10 @@ const COVER_PALETTES = {
     logoColor: '#1b1c20',
     raceway:   0x9aa0aa,
     ringMetal: 0x3a3d45,
-    /* Brushed-metal look — high metalness, low roughness. */
-    skinRough: 0.34, skinMetal: 0.72, skinCoat: 0.30, skinEnv: 0.72,
+    /* Brushed metal — metallic but deliberately ROUGH (and no
+       clearcoat) so the environment reflection is diffuse rather than
+       a sharp highlight that sparkles/shimmers on the spinning body. */
+    skinRough: 0.58, skinMetal: 0.85, skinCoat: 0.0, skinEnv: 0.5,
   },
 };
 
