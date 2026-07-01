@@ -233,7 +233,17 @@ class R2EngineTestStorage(EngineTestStorage):
             aws_access_key_id=access_key_id,
             aws_secret_access_key=secret_access_key,
             region_name=region,
-            config=Config(signature_version="s3v4"),
+            # Explicit fast-fail timeouts. Default boto3 would retry
+            # up to 5 times at 60 seconds each = 5 minutes hanging
+            # on a bad path before surfacing an error. Tighter values
+            # keep the Engine Test page snappy even if R2 is temporarily
+            # slow, and surface the failure to the user quickly.
+            config=Config(
+                signature_version="s3v4",
+                connect_timeout=5,
+                read_timeout=20,
+                retries={"max_attempts": 2, "mode": "standard"},
+            ),
         )
         self._cache_dir = Path(tempfile.gettempdir()) / self._CACHE_DIRNAME
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -298,12 +308,24 @@ class R2EngineTestStorage(EngineTestStorage):
 
     def _safe_prewarm(self) -> None:
         """Background thread entry-point that warms the snapshot cache
-        at construction time. Swallows all errors — the real request
-        path will bubble any real problems up to the user."""
+        at construction time. Logs but doesn't re-raise on failure —
+        the real request path will surface any real problems to the
+        user (with the tightened timeout so it fails fast, not slow)."""
+        import sys as _sys
         try:
-            self._snapshot_bucket()
-        except Exception:
-            pass
+            t0 = time.time()
+            n = len(self._snapshot_bucket())
+            print(
+                f"[r2-engine-test] pre-warm ok — {n} files cached in "
+                f"{time.time() - t0:.2f}s",
+                file=_sys.stderr, flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"[r2-engine-test] pre-warm failed: "
+                f"{type(exc).__name__}: {exc}",
+                file=_sys.stderr, flush=True,
+            )
 
     def _snapshot_bucket(self) -> list[dict]:
         """Full-bucket scan with an LRU-ish TTL cache. Both `list_tests`
@@ -315,7 +337,22 @@ class R2EngineTestStorage(EngineTestStorage):
         if self._snapshot and now - self._snapshot_t < self._LIST_TTL_S:
             return self._snapshot
 
-        with self._snapshot_lock:
+        # Non-blocking lock acquisition with a hard cap. If another
+        # thread is already refreshing the snapshot (e.g. the pre-warm
+        # thread is still running its first R2 call), waiting past
+        # LIST_TTL_S+read_timeout is a bug — we'd rather return a
+        # stale-or-empty snapshot than hang the user's request
+        # arbitrarily long.
+        acquired = self._snapshot_lock.acquire(timeout=25)
+        if not acquired:
+            import sys as _sys
+            print(
+                "[r2-engine-test] snapshot lock timeout — returning "
+                f"{'stale' if self._snapshot else 'empty'} cache",
+                file=_sys.stderr, flush=True,
+            )
+            return self._snapshot
+        try:
             # Recheck under lock — another thread may have refreshed
             # while we were waiting.
             now = time.time()
@@ -345,6 +382,8 @@ class R2EngineTestStorage(EngineTestStorage):
             self._snapshot = snapshot
             self._snapshot_t = time.time()
             return snapshot
+        finally:
+            self._snapshot_lock.release()
 
     # ── interface ──────────────────────────────────────────────────────
 
