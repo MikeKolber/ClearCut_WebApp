@@ -248,12 +248,42 @@ class R2EngineTestStorage(EngineTestStorage):
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         # Shared full-bucket snapshot. Populated lazily on the first
         # request that needs it (list_tests / list_test_files) and
-        # reused for _LIST_TTL_S. No background pre-warm and no lock —
-        # earlier attempts to be clever here (background thread holding
-        # a lock) caused the whole backend to freeze up when the R2
-        # call was slow.
+        # reused for _LIST_TTL_S. No background pre-warm holding a
+        # lock — an earlier attempt at that architecture caused the
+        # whole backend to freeze when the R2 call was slow. The
+        # simple "warm the TLS connection" below is safe though — it's
+        # a one-shot call that just gets a socket ready in the pool.
         self._snapshot_t: float = 0.0
         self._snapshot: list[dict] = []
+
+        # Fire a throwaway HEAD against the bucket so boto3 does its
+        # TLS handshake + credential resolution now, at startup, rather
+        # than making the first real user request pay that cost. Any
+        # error is swallowed — this is best-effort warm-up, not gating.
+        import threading as _threading
+        def _warm_connection() -> None:
+            import sys as _sys
+            try:
+                t0 = time.time()
+                self._client.head_bucket(Bucket=self._bucket)
+                print(
+                    f"[r2-engine-test] connection warmed in "
+                    f"{time.time() - t0:.2f}s",
+                    file=_sys.stderr, flush=True,
+                )
+            except Exception as exc:
+                print(
+                    f"[r2-engine-test] connection warm-up failed: "
+                    f"{type(exc).__name__}: {exc}",
+                    file=_sys.stderr, flush=True,
+                )
+        try:
+            _threading.Thread(
+                target=_warm_connection, daemon=True,
+                name="r2-engine-test-warmup",
+            ).start()
+        except Exception:
+            pass
 
     @property
     def description(self) -> str:

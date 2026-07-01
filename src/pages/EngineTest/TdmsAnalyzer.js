@@ -125,8 +125,12 @@ function TdmsAnalyzer() {
     try {
       const data = await loadEngineTdms(testName, fileName);
       setSelectedFile(fileName);
-      setChannels(data?.channels || {});
-      setSelectedChannels(new Set());
+      const chanMap = data?.channels || {};
+      setChannels(chanMap);
+      // Auto-select every channel so the plot has traces the moment
+      // the file finishes loading. Users can then untick channels
+      // they don't care about via the "None" / individual toggles.
+      setSelectedChannels(new Set(Object.keys(chanMap)));
       setBaselineInputs({});
       setRanges([]);
       setPickingFor(null);

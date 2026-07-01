@@ -613,6 +613,28 @@ def engine_test_detail(name: str):
 
 _TDMS_CHANNEL_FILTER = ("Voltage", "Current")
 
+# Directory holding the on-disk cache of *parsed* TDMS responses. First
+# user to click a given file pays the full download-and-parse cost;
+# every subsequent click by anyone (across the whole team) reads the
+# cached JSON straight off Render's persistent disk and responds in
+# milliseconds. Cache lives on the persistent volume so it survives
+# redeploys — a hot file stays hot until it's re-uploaded to R2.
+_TDMS_JSON_CACHE_DIR = _DATA_ROOT / "tdms_json_cache"
+_TDMS_JSON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _tdms_cache_path_for(local_tdms_path: str) -> Path:
+    """Cache-file location for a given TDMS. Keyed on the storage
+    layer's returned local path — for R2 mode that path already
+    embeds the R2 ETag, so re-uploaded files get a fresh cache
+    automatically."""
+    import hashlib
+    key = hashlib.sha256(local_tdms_path.encode("utf-8")).hexdigest()[:24]
+    # Suffix with the source basename so a human inspecting the cache
+    # dir can tell what's in there.
+    src_name = Path(local_tdms_path).stem[:40]
+    return _TDMS_JSON_CACHE_DIR / f"{key}_{src_name}.json"
+
 
 @app.get("/api/engine/tests/<path:name>/tdms/<path:file_name>")
 def engine_test_tdms(name: str, file_name: str):
@@ -627,6 +649,21 @@ def engine_test_tdms(name: str, file_name: str):
     local_path = _engine_test_storage.open_tdms_file(name, file_name)
     if local_path is None:
         return jsonify({"error": f"file not found: {file_name}"}), 404
+
+    # ── on-disk cache of the parsed JSON response ────────────────
+    # First hit on this file pays the download + parse; every hit
+    # after that (from any coworker) reads the cached JSON in a few
+    # ms and skips both R2 and nptdms entirely.
+    cache_path = _tdms_cache_path_for(local_path)
+    if cache_path.exists():
+        try:
+            with open(cache_path, "rb") as f:
+                cached = f.read()
+            return app.response_class(
+                cached, mimetype="application/json",
+            )
+        except OSError:
+            pass  # fall through and rebuild if the cache is unreadable
 
     try:
         from nptdms import TdmsFile
@@ -710,15 +747,27 @@ def engine_test_tdms(name: str, file_name: str):
         )
 
     elapsed = time.perf_counter() - t0
-    return jsonify(
-        {
-            "test_name": name,
-            "file_name": file_name,
-            "channel_count": len(channels),
-            "load_time_s": round(elapsed, 3),
-            "channels": channels,
-        }
-    )
+    body = {
+        "test_name": name,
+        "file_name": file_name,
+        "channel_count": len(channels),
+        "load_time_s": round(elapsed, 3),
+        "channels": channels,
+    }
+
+    # Persist the built JSON so future requests for the same file skip
+    # every expensive step above. Write is best-effort — if the disk
+    # is full or the write fails, we still return the response to the
+    # user; only future callers lose the speedup.
+    try:
+        tmp = cache_path.with_suffix(".json.tmp")
+        with open(tmp, "w") as f:
+            json.dump(body, f)
+        tmp.replace(cache_path)
+    except OSError:
+        pass
+
+    return jsonify(body)
 
 
 # ---------------------------------------------------------------------------
