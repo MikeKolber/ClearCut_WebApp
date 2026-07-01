@@ -294,11 +294,15 @@
 .RVM-color-flyout {
   position: absolute;
   top: 50%;
-  right: calc(100% + 10px);
+  right: 100%;
+  /* Transparent bridge (right padding) so the cursor never crosses a
+     dead gap between the button and the swatches — the flyout's own
+     box touches the button. Open state is toggled from JS. */
   transform: translateY(-50%) translateX(6px);
   display: flex;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 8px 12px;
+  margin-right: -2px;
   border-radius: 12px;
   background: rgba(8, 8, 22, 0.82);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
@@ -310,8 +314,7 @@
   transition: opacity 0.16s ease, transform 0.16s ease;
   z-index: 6;
 }
-.RVM-cover-control:hover .RVM-color-flyout,
-.RVM-cover-control:focus-within .RVM-color-flyout {
+.RVM-color-flyout--open {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(-50%) translateX(0);

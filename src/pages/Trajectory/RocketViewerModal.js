@@ -51,6 +51,11 @@ function RocketViewerModal({ onClose }) {
      wrapped rocket and the user dissolves it to reveal the internals. */
   const [coverOn, setCoverOn] = useState(true);
   const [colorMode, setColorMode] = useState('white');
+  /* Colour picker open state is JS-driven (not pure CSS :hover) so it
+     stays reliably open while the cursor travels from the button to the
+     swatches, and is available whether the shell is on or off. */
+  const [colorOpen, setColorOpen] = useState(false);
+  const colorMenuTimer = useRef(null);
 
   // Step 1 — fetch the rocket geometry from the backend.
   useEffect(() => {
@@ -143,6 +148,17 @@ function RocketViewerModal({ onClose }) {
     sceneRef.current?.setColorMode?.(mode);
     setColorMode(mode);
   };
+  const openColorMenu = () => {
+    if (colorMenuTimer.current) { clearTimeout(colorMenuTimer.current); colorMenuTimer.current = null; }
+    setColorOpen(true);
+  };
+  const closeColorMenuSoon = () => {
+    if (colorMenuTimer.current) clearTimeout(colorMenuTimer.current);
+    colorMenuTimer.current = setTimeout(() => setColorOpen(false), 260);
+  };
+  useEffect(() => () => {
+    if (colorMenuTimer.current) clearTimeout(colorMenuTimer.current);
+  }, []);
   const onResetView = () => {
     sceneRef.current?.resetView?.();
     setExploded(false);
@@ -292,7 +308,13 @@ function RocketViewerModal({ onClose }) {
                     skin away to expose the internal structure. The
                     wrapping div is the anchor for the colour-mode
                     flyout added in a later phase. */}
-                <div className="RVM-cover-control">
+                <div
+                  className="RVM-cover-control"
+                  onMouseEnter={openColorMenu}
+                  onMouseLeave={closeColorMenuSoon}
+                  onFocus={openColorMenu}
+                  onBlur={closeColorMenuSoon}
+                >
                   <button
                     type="button"
                     className={`RVM-toolbtn-primary RVM-toolbtn-cover${coverOn ? '' : ' RVM-toolbtn-cover--off'}`}
@@ -314,7 +336,11 @@ function RocketViewerModal({ onClose }) {
                   {/* Colour-mode picker — flies out to the left when the
                       user hovers (or keyboard-focuses) the cover control.
                       Swatches recolour the whole rocket livery live. */}
-                  <div className="RVM-color-flyout" role="group" aria-label="Rocket colour">
+                  <div
+                    className={`RVM-color-flyout${colorOpen ? ' RVM-color-flyout--open' : ''}`}
+                    role="group"
+                    aria-label="Rocket colour"
+                  >
                     {COLOR_MODES.map(({ id, label, dot }) => (
                       <button
                         key={id}

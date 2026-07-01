@@ -1012,10 +1012,17 @@ function buildCoverLivery(geom) {
  * already computed inside buildRocket so we don't re-derive heights.
  */
 function buildCover(D, m) {
-  const R1 = D.stage1_radius;
-  const R2 = D.stage2_radius;
-  const R3 = D.stage3_radius;
-  const fRad = D.fairing_radius * 1.15;
+  /* The cover skin is inflated a few percent beyond the internal hull
+     walls (which sit at the raw stage radii). Without this margin the
+     opaque skin and the translucent internal walls are coincident and
+     z-fight — a shimmering "static" that's especially visible on a
+     dark/metal cover. The gap also reads as a real aeroshell standing
+     off the tank structure. */
+  const COVER_MARGIN = 1.03;
+  const R1 = D.stage1_radius * COVER_MARGIN;
+  const R2 = D.stage2_radius * COVER_MARGIN;
+  const R3 = D.stage3_radius * COVER_MARGIN;
+  const fRad = D.fairing_radius * 1.15 * COVER_MARGIN;
 
   /* (y, r) profile, bottom → top. Same-y / different-r pairs form flat
      shoulder rings (e.g. the payload adapter where the body steps out
