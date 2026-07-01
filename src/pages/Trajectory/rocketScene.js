@@ -824,7 +824,7 @@ const COVER_PALETTES = {
     base:      '#E6E6EA',
     panelLine: 'rgba(120,120,138,0.30)',
     ring:      'rgba(95,95,112,0.26)',
-    rivet:     'rgba(80,80,95,0.45)',
+    rivet:     'rgba(80,80,95,0.28)',
     band:      '#17171c',
     rollA:     '#111114',
     rollB:     '#ededf0',
@@ -839,7 +839,7 @@ const COVER_PALETTES = {
     base:      '#17181c',
     panelLine: 'rgba(200,200,215,0.16)',
     ring:      'rgba(190,190,205,0.13)',
-    rivet:     'rgba(210,210,225,0.28)',
+    rivet:     'rgba(210,210,225,0.15)',
     band:      '#050506',
     rollA:     '#050506',
     rollB:     '#e8e8ec',
@@ -852,7 +852,7 @@ const COVER_PALETTES = {
     base:      '#1a2740',
     panelLine: 'rgba(170,190,225,0.18)',
     ring:      'rgba(150,175,215,0.15)',
-    rivet:     'rgba(190,205,235,0.28)',
+    rivet:     'rgba(190,205,235,0.15)',
     band:      '#0b1120',
     rollA:     '#0b1120',
     rollB:     '#eef2f8',
@@ -865,7 +865,7 @@ const COVER_PALETTES = {
     base:      '#b8bcc4',
     panelLine: 'rgba(70,72,80,0.32)',
     ring:      'rgba(60,62,70,0.30)',
-    rivet:     'rgba(50,52,60,0.5)',
+    rivet:     'rgba(50,52,60,0.3)',
     band:      '#3a3d45',
     rollA:     '#222327',
     rollB:     '#e6e8ec',
@@ -931,17 +931,22 @@ function buildCoverLivery(geom) {
       ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, CH); ctx.stroke();
     }
 
-    /* Horizontal stiffener rings (~every 1.4 m) with a row of rivet dots. */
-    const ringN = Math.max(2, Math.floor(yMax / 1.4));
+    /* Horizontal stiffener rings (~every 2.6 m). Rivets go on alternate
+       rings only, sparse and chunky — dense 1px dots otherwise alias
+       into shimmering "static" when the cylinder is seen at grazing
+       angles (very visible on dark/metal bodies). */
+    const ringN = Math.max(2, Math.floor(yMax / 2.6));
     for (let i = 1; i < ringN; i++) {
       const py = vToY(i / ringN);
       ctx.strokeStyle = palette.ring;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(CW, py); ctx.stroke();
-      ctx.fillStyle = palette.rivet;
-      for (let j = 0; j < seams * 2; j++) {
-        const px = (j / (seams * 2)) * CW;
-        ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
+      if (i % 2 === 0) {
+        ctx.fillStyle = palette.rivet;
+        for (let j = 0; j < seams; j++) {
+          const px = ((j + 0.5) / seams) * CW;
+          ctx.beginPath(); ctx.arc(px, py, 2.4, 0, Math.PI * 2); ctx.fill();
+        }
       }
     }
 
@@ -958,7 +963,7 @@ function buildCoverLivery(geom) {
     if (rollTop > 0) {
       const yTop = vToY(rollTop / yMax);
       const yBot = vToY(0);
-      const cells = 16, rows = 3;
+      const cells = 12, rows = 3;
       const cw = CW / cells, rh = (yBot - yTop) / rows;
       for (let r = 0; r < rows; r++) {
         for (let cI = 0; cI < cells; cI++) {
@@ -971,7 +976,10 @@ function buildCoverLivery(geom) {
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  /* High anisotropy + mipmaps (on by default for this POT canvas) are
+     what keep the fine livery lines from shimmering on the near-grazing
+     cylinder sides as the rocket spins. */
+  tex.anisotropy = 16;
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
 
@@ -1066,7 +1074,7 @@ function buildCover(D, m) {
     yMax,
     bands,
     rollTop: yMax * 0.05,
-    seams: 30,
+    seams: 22,
   });
 
   /* Main skin lathe. Colour stays white so the baked texture shows
@@ -2241,9 +2249,34 @@ export function setupRocketScene(container, data, options = {}) {
      (finished rocket), 1 = fully dissolved (internals revealed).
      `coverCurrent` chases it with a slow lerp so the noise erosion +
      glowing edge reads as a deliberate reveal. Starts at 0 → the
-     vehicle opens covered. */
+     vehicle opens covered. `pendingCover` defers re-forming the shell
+     until a disassembled rocket has finished reassembling, so the cover
+     never wraps a spread-out stack. */
   let coverTarget = 0;
   let coverCurrent = 0;
+  let pendingCover = false;
+
+  /* Is the cover currently on (or on its way on)? */
+  const coverIsOn = () => coverTarget < 0.5 || pendingCover;
+
+  /* Drive the cover on/off. Turning it ON always reassembles first;
+     if the rocket is still visibly exploded, the shell is deferred
+     (via `pendingCover`) until the tick sees it closed. */
+  const applyCover = (on) => {
+    if (on) {
+      explodeTarget = 0;
+      if (explodeCurrent > 0.06) {
+        pendingCover = true;
+        coverTarget = 1;
+      } else {
+        pendingCover = false;
+        coverTarget = 0;
+      }
+    } else {
+      pendingCover = false;
+      coverTarget = 1;
+    }
+  };
 
   /* Manual pan offset (world space). The tick loop normally drives
      `ctrl.target` from the focus slider + explode shift; if pan just
@@ -2329,6 +2362,13 @@ export function setupRocketScene(container, data, options = {}) {
     explodeCurrent += (explodeTarget - explodeCurrent) * 0.08;
     for (const e of explodeTargets) {
       e.group.position.y = e.offset * explodeCurrent;
+    }
+
+    /* Once a deferred re-cover's rocket has finished reassembling, let
+       the shell start forming back over the closed vehicle. */
+    if (pendingCover && explodeCurrent < 0.06) {
+      pendingCover = false;
+      coverTarget = 0;
     }
 
     /* Cover dissolve lerp. Push the current progress into every cover
@@ -2467,18 +2507,19 @@ export function setupRocketScene(container, data, options = {}) {
      *  skin, so the reveal rides along with the explode. */
     setExploded(on) {
       explodeTarget = on ? 1 : 0;
-      if (on) coverTarget = 1;
+      if (on) { coverTarget = 1; pendingCover = false; }
     },
     /** Show (`on = true`) or dissolve away (`on = false`) the outer
-     *  cover. */
+     *  cover. Turning it on reassembles first (see applyCover). */
     setCover(on) {
-      coverTarget = on ? 0 : 1;
+      applyCover(on);
     },
     /** Toggle the outer cover. Returns the new on/off state (true =
-     *  cover present) so the modal can sync its button label. */
+     *  cover present / on its way on) so the modal can sync its label. */
     toggleCover() {
-      coverTarget = coverTarget > 0.5 ? 0 : 1;
-      return coverTarget < 0.5;
+      const next = !coverIsOn();
+      applyCover(next);
+      return next;
     },
     /** Recolour the cover: 'white' | 'black' | 'darkblue' | 'metal'.
      *  Re-draws the livery, re-stamps the decals with a contrast-safe
@@ -2495,6 +2536,7 @@ export function setupRocketScene(container, data, options = {}) {
       focusTarget = totalH * 0.02;
       explodeTarget = 0;
       coverTarget = 0;
+      pendingCover = false;
       lastDolly = 1;
       panOffset.set(0, 0, 0);
       rocketInner.rotation.y = 0;

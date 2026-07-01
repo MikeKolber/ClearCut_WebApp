@@ -132,7 +132,12 @@ function RocketViewerModal({ onClose }) {
   };
   const onToggleCover = () => {
     const coverNowOn = sceneRef.current?.toggleCover?.();
-    if (typeof coverNowOn === 'boolean') setCoverOn(coverNowOn);
+    if (typeof coverNowOn === 'boolean') {
+      setCoverOn(coverNowOn);
+      /* Restoring the shell also reassembles the rocket in the scene,
+         so keep the Disassemble button's label in sync. */
+      if (coverNowOn) setExploded(false);
+    }
   };
   const onPickColor = (mode) => {
     sceneRef.current?.setColorMode?.(mode);
