@@ -73,6 +73,15 @@ services:
       - key: PYTHON_VERSION
         value: "3.12.7"
 
+      # Disable boto3's automatic EC2 Instance Metadata Service (IMDS)
+      # lookup. Render isn't AWS, so IMDS on 169.254.169.254 is
+      # unreachable — but boto3 will happily wait 10+ seconds trying
+      # to reach it during its credential-resolution chain, even
+      # though we provide explicit R2 access keys. Turning this off
+      # tells botocore to skip IMDS entirely.
+      - key: AWS_EC2_METADATA_DISABLED
+        value: "true"
+
       # Point user-writable data at the persistent disk mounted above.
       # Two trees inside:  shared/  (preset + saved-sim library, all
       # users see)  and  sessions/<sid>/  (live current-run workspace,
