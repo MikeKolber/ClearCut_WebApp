@@ -237,6 +237,10 @@ function RocketViewerModal({ onClose }) {
         break;
       case 'flash':
         setFlashKey(Date.now());
+        /* Belt-and-braces: unmount the flash overlay shortly after
+           its CSS fade completes so it can never linger over the
+           scene, whatever the animation state ends up being. */
+        fadeTimers.current.push(setTimeout(() => setFlashKey(null), 1300));
         break;
       case 'done':
         settleAfterSequence(() => sceneRef.current?.abortLaunch?.());

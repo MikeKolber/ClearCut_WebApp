@@ -3201,8 +3201,13 @@ export function setupRocketScene(container, data, options = {}) {
       const st = launchParts.stages[act];
       _exitWorld.set(0, st.exitY + st.group.position.y, 0);
       rocketInner.localToWorld(_exitWorld);
-      engineLight.position.copy(_exitWorld);
-      engineLight.intensity = launch.flareCurrent[act] * totalH * 7;
+      /* The light sits IN the plume, a stage-radius below the bell —
+         far enough from every surface that nothing blows out. r160
+         point-light intensity is physical candela with inverse-square
+         falloff, so this is kept modest and clamped: the earlier
+         `totalH * 7` value tone-mapped the whole frame to white. */
+      engineLight.position.set(_exitWorld.x, _exitWorld.y - st.R * 1.4, _exitWorld.z);
+      engineLight.intensity = launch.flareCurrent[act] * Math.min(totalH * 0.5, 30);
       engineLight.visible = true;
       const n = Math.round(140 * dt * launch.flareCurrent[act] * (act === 0 ? 1 : 0.55));
       exhaust.spawn(_exitWorld, _down, n, totalH * 0.9, st.R * 1.1);
