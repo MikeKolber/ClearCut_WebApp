@@ -52,6 +52,14 @@ function ShortcutsOverlay({ onClose }) {
             <Shortcut keys={['?']}    label="Open this shortcuts overlay" />
             <Shortcut keys={['Esc']}  label="Close any open modal / overlay" />
           </Group>
+
+          <Group title="Engine Test · Video Review">
+            <Shortcut keys={['Space']}        label="Play / pause" />
+            <Shortcut keys={['←', '→']}       label="Step one frame" />
+            <Shortcut keys={['Shift', '←/→']} label="Step ~1 second" />
+            <Shortcut keys={[',', '.']}       label="Cycle playback speed" />
+            <Shortcut keys={['F']}            label="Toggle fullscreen" />
+          </Group>
         </div>
 
         <footer className="SO-foot mono">

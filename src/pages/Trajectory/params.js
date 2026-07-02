@@ -32,8 +32,8 @@ export const TRAJECTORY_PARAMS = {
       tip: 'Altitude above the WGS-84 ellipsoid',
     },
     initial_launch_azimuth_with_rotation: {
-      label: 'Launch Azimuth', unit: 'deg', type: 'float',
-      tip: 'Recalculated from inclination & latitude at runtime',
+      label: 'Launch Azimuth', unit: 'deg', type: 'float', optional: true,
+      tip: 'Leave empty to auto-compute from inclination, latitude & orbit height',
     },
     initial_role: {
       label: 'Initial Roll', unit: 'deg', type: 'float',
@@ -140,11 +140,15 @@ export const STAGE_PARAMS_PER_STAGE = {
   },
   fuel_type: {
     label: 'Fuel Type', unit: '', type: 'str',
-    tip: 'CEA fuel identifier (e.g. Jet-A(L), RP-1, CH4(L))',
+    tip: 'CEA fuel identifier (e.g. Jet-A(L)). Note: the engine model uses '
+      + 'precomputed CEA data for Jet-A(L)/HTP90 — changing the type does '
+      + 'not recompute combustion values (C*, exit velocity).',
   },
   oxidizer_type: {
     label: 'Oxidizer Type', unit: '', type: 'str',
-    tip: 'CEA oxidizer identifier (e.g. HTP90, LOX)',
+    tip: 'CEA oxidizer identifier (e.g. HTP90). Note: the engine model uses '
+      + 'precomputed CEA data for Jet-A(L)/HTP90 — changing the type does '
+      + 'not recompute combustion values (C*, exit velocity).',
   },
   desired_operating_pressure: {
     label: 'Chamber Pressure', unit: 'bar', type: 'float',

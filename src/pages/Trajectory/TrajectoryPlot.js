@@ -9,17 +9,9 @@ import { JumpTabs, getJumpTabs, LiveSimBadge } from './JumpTabs';
 import { isTrajectoryFreshInSession } from './runState';
 import EmptyState from './EmptyState';
 import './TrajectoryPlot.css';
+import { colorFor } from '../../constants/plotColors';
 
 const Plot = createPlotlyComponent(Plotly);
-
-/** Same plot palette as core/gui/config.py::PLOT_COLORS, retuned for dark bg.
- *  Mirrors the colors used by `TdmsAnalyzer` for consistency. */
-const PLOT_COLORS = [
-  '#4DA8DA', '#E06070', '#4ADE9A', '#E8AB2D', '#A78BFA',
-  '#F0825C', '#34D399', '#C084FC', '#60A5FA', '#FBBF24',
-  '#F87171', '#22D3EE', '#A855F7', '#84CC16', '#FB923C',
-];
-const colorFor = (idx) => PLOT_COLORS[idx % PLOT_COLORS.length];
 
 /** Channels pre-checked when the page first opens — matches the desktop
  *  `plot.py` defaults. Falls back to whatever's in the CSV if any are
@@ -105,7 +97,7 @@ function TrajectoryPlot() {
 
   /* ── Derived ─────────────────────────────────────────────── */
 
-  const columns = data?.columns || {};
+  const columns = useMemo(() => data?.columns || {}, [data]);
   const allColumnNames = useMemo(() => Object.keys(columns), [columns]);
 
   // Reset the slider's upper bound whenever the X-axis column changes.

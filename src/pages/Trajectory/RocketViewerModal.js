@@ -266,7 +266,7 @@ function RocketViewerModal({ onClose }) {
 
         <div className="RVM-body">
           {loadingData && (
-            <div className="RVM-empty mono">// loading rocket geometry…</div>
+            <div className="RVM-empty mono">{'// loading rocket geometry…'}</div>
           )}
           {error && (
             <div className="RVM-empty RVM-empty--err mono">⚠ {error}</div>
@@ -279,7 +279,7 @@ function RocketViewerModal({ onClose }) {
               <div ref={containerRef} className="RVM-canvas" />
               {bootingScene && (
                 <div className="RVM-empty RVM-empty--overlay mono">
-                  // building scene…
+                  {'// building scene…'}
                 </div>
               )}
 

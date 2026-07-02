@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 
 import TopBar from '../../components/TopBar/TopBar';
 import { JumpTabs, getJumpTabs, LiveSimBadge } from './JumpTabs';
@@ -20,38 +18,13 @@ import './MapView.css';
 
 /* ═══ Map View — unified geo viewer ════════════════════════════════
  *
- *   The Globe / Flat radio in the sidebar is more than a projection
- *   toggle: it swaps the entire map engine.
- *     • Flat (Mercator) → MapLibre, surface ground track only.
- *     • Globe (3D)      → deck.gl GlobeView (`Map3D.js`), 3D arc only.
+ *   Both the Globe (3D) and Flat (Mercator) modes render through
+ *   Map3D (`Map3D.js`, deck.gl). The Globe / Flat radio in the
+ *   sidebar switches the projection + camera behaviour; the debris
+ *   layers (origins / impacts / 3-σ ellipses) and the sidebar UI are
+ *   shared between the two modes.
  *
- *   Why split? MapLibre's globe projection + a deck.gl PathLayer with
- *   altitude z-values renders the 3D line shifted off the planet —
- *   their reprojection matrices don't agree on what z means. Each
- *   engine is great at one of the two jobs, so we let each handle its
- *   own. From the user's perspective the radio still flips between
- *   a flat top-down view and a 3D globe view; the underlying engine
- *   change is invisible.
- *
- *   Both engines share the same debris layers (origins / impacts /
- *   3-σ ellipses) and the same sidebar UI.
- *
- *   Tiles: MapLibre uses OpenFreeMap dark vector tiles; Map3D uses
- *   Carto Dark Matter raster tiles (see Map3D.js). Both are free.   */
-
-const TILE_STYLE = 'https://tiles.openfreemap.org/styles/dark';
-
-// MapLibre layer / source ids for the 2D playback overlay. Module-
-// scoped so the cleanup paths can reference them without churning
-// React effect dependency arrays.
-const PLAYBACK_2D_LAYERS = [
-  'playback-trail-glow',
-  'playback-trail-line',
-  'playback-rocket-halo2',
-  'playback-rocket-halo',
-  'playback-rocket-dot',
-];
-const PLAYBACK_2D_SOURCES = ['playback-trail', 'playback-rocket'];
+ *   Tiles: EOX Sentinel-2 + CARTO raster tiles (see Map3D.js).      */
 
 /* `isTrajectoryFreshInSession` / `isDebrisFreshInSession` come from
    `./runState.js` — see that module for what each flag means. The
@@ -99,23 +72,17 @@ function MapView() {
   const [playProgressUI, setPlayProgressUI] = useState(0);
 
   /* ── refs ─────────────────────────────────────────────────── */
-  // MapLibre (Flat / Mercator) refs
-  const containerRef = useRef(null);
-  const mapRef = useRef(null);
-  // Track whether the map's `style.load` has fired so we don't call
-  // map.addSource before the style is ready.
-  const styleLoadedRef = useRef(false);
-  // Once the camera has done its first auto-fit we leave it alone —
-  // the user's panning/zooming shouldn't get stomped on every refetch.
-  const autoFittedRef = useRef(false);
-  // Map3D (Globe) imperative ref — exposes fitToBounds / flyTo / reset
-  // so the sidebar's Fit-to buttons work in either engine.
+  // Map3D imperative ref — exposes fitToBounds / flyTo / reset so the
+  // sidebar's Fit-to buttons work in either projection.
   const map3DRef = useRef(null);
 
   /* ── playback refs (60Hz state, kept out of React) ────────── */
   // 0..1 — fractional position along the trajectory
   const playProgressRef = useRef(0);
   const playRafRef = useRef(null);
+  // Last time the React-visible progress mirror was refreshed (the
+  // rAF loop throttles those updates to ~8 Hz).
+  const lastUiUpdateRef = useRef(0);
   // Set when a play tick begins so we can compute "elapsed since
   // resume" without losing the prior progress on pause/play cycles.
   const playStartTimeRef = useRef(0);
@@ -416,530 +383,10 @@ function MapView() {
     return t || d || null;
   }, [trackBounds, debrisFeatures.bounds]);
 
-  /* ── MapLibre disabled — Map3D handles both projections now ─── */
-  // Previously this effect spun up a MapLibre instance for the Flat
-  // mercator view, while Map3D handled Globe. MapLibre 5.x had cryptic
-  // production errors on Render's CDN ("o is not defined" from
-  // evented.ts) that we couldn't fix. Since deck.gl was already known
-  // to work for Globe, we extended Map3D to support mercator too and
-  // dropped MapLibre. Leaving `mapRef` permanently null causes all the
-  // other MapLibre-using effects below to short-circuit on their
-  // `if (!map) return` guards — no further changes needed there.
-  //
-  // (The MapLibre code path is intentionally left in place for now
-  // rather than ripped out wholesale, so a future deploy could restore
-  // it by simply re-enabling this effect. None of it executes today.)
-
-  /* ── resize MapLibre when it comes back into view from globe ─ */
-  // While the globe view is showing the MapLibre <div> is hidden via
-  // CSS. Without a manual resize, switching back leaves the canvas at
-  // its last drawn size and MapLibre paints with the wrong viewport.
-  useEffect(() => {
-    if (projection !== 'mercator') return;
-    const map = mapRef.current;
-    if (!map) return;
-    // Wait one frame so the layout has settled after the display flip.
-    const id = window.requestAnimationFrame(() => {
-      try { map.resize(); } catch { /* ignore */ }
-    });
-    return () => window.cancelAnimationFrame(id);
-  }, [projection]);
-
-  /* ── render the trajectory track when data + map are ready ─ */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !trackCoords) return undefined;
-
-    const apply = () => {
-      if (!styleLoadedRef.current) return;
-
-      const SOURCE_ID = 'traj-track';
-      const LAYER_ID = 'traj-track-line';
-      const GLOW_ID = 'traj-track-glow';
-
-      // Split the path at antimeridian crossings so MapLibre draws
-      // each orbit as its own clean line in [-180, 180] instead of
-      // bridging 179° → -179° with a giant horizontal "geodesic"
-      // across the entire map. We use a FeatureCollection of separate
-      // LineStrings (rather than a single MultiLineString Feature) so
-      // each segment lives in its own tile pyramid and can't leak a
-      // connecting line at tile boundaries — the simulation's vertex
-      // values themselves are the untouched output.
-      const data =
-        featureCollectionFromSegments(splitAtAntimeridian(trackCoords)) ||
-        // Fallback to an empty FC if there are no segments yet (the
-        // run hasn't filled in lat/lon columns yet, etc).
-        { type: 'FeatureCollection', features: [] };
-
-      // Update source if it exists, otherwise create.
-      if (map.getSource(SOURCE_ID)) {
-        map.getSource(SOURCE_ID).setData(data);
-      } else {
-        map.addSource(SOURCE_ID, { type: 'geojson', data, lineMetrics: false });
-      }
-
-      // Soft outer glow underneath the line. `line-cap: butt`
-      // (instead of round) so segment endpoints don't stack up as
-      // fuzzy circles where consecutive orbits all cross the
-      // antimeridian — that pile would otherwise fuse into a fake
-      // vertical glow line at the dateline as orbits accumulate.
-      if (!map.getLayer(GLOW_ID)) {
-        map.addLayer({
-          id: GLOW_ID,
-          type: 'line',
-          source: SOURCE_ID,
-          layout: { 'line-cap': 'butt', 'line-join': 'round' },
-          paint: {
-            'line-color': '#4DA8DA',
-            'line-width': 7,
-            'line-opacity': 0.18,
-            'line-blur': 3,
-          },
-        });
-      }
-
-      // Crisp main line
-      if (!map.getLayer(LAYER_ID)) {
-        map.addLayer({
-          id: LAYER_ID,
-          type: 'line',
-          source: SOURCE_ID,
-          layout: { 'line-cap': 'butt', 'line-join': 'round' },
-          paint: {
-            'line-color': '#80c8f0',
-            'line-width': 2.2,
-            'line-opacity': 0.95,
-          },
-        });
-      }
-
-      // Endpoint markers (launch ↔ last sample) using a tiny
-      // `circle` layer on a separate one-feature source.
-      const ENDS_SOURCE = 'traj-track-ends';
-      const ENDS_LAYER = 'traj-track-ends-layer';
-      const endsData = {
-        type: 'FeatureCollection',
-        features: [
-          { type: 'Feature', properties: { kind: 'launch' },
-            geometry: { type: 'Point', coordinates: trackCoords[0] } },
-          { type: 'Feature', properties: { kind: 'tip'    },
-            geometry: { type: 'Point', coordinates: trackCoords[trackCoords.length - 1] } },
-        ],
-      };
-      if (map.getSource(ENDS_SOURCE)) {
-        map.getSource(ENDS_SOURCE).setData(endsData);
-      } else {
-        map.addSource(ENDS_SOURCE, { type: 'geojson', data: endsData });
-      }
-      if (!map.getLayer(ENDS_LAYER)) {
-        map.addLayer({
-          id: ENDS_LAYER,
-          type: 'circle',
-          source: ENDS_SOURCE,
-          paint: {
-            'circle-radius': 5,
-            'circle-color': '#80c8f0',
-            'circle-stroke-color': '#0b1118',
-            'circle-stroke-width': 1.5,
-          },
-        });
-      }
-
-      // First-time camera placement: fly to the launch site at a
-      // medium zoom so the user starts staring at where the rocket
-      // actually lifted off, not at the whole arc framed at 100k ft.
-      // The `Fit to Trajectory` button (sidebar) gives the wide view
-      // when needed.
-      if (!autoFittedRef.current && launchSite) {
-        try {
-          map.flyTo({
-            center: launchSite,
-            zoom: 9,
-            pitch: 0,
-            duration: 900,
-            essential: true,
-          });
-          autoFittedRef.current = true;
-        } catch { /* ignore on edge cases */ }
-      }
-    };
-
-    if (styleLoadedRef.current) {
-      apply();
-    } else {
-      const onceLoaded = () => apply();
-      map.once('style.load', onceLoaded);
-      return () => map.off('style.load', onceLoaded);
-    }
-    return undefined;
-  }, [trackCoords, launchSite]);
-
-  /* ── render debris layers (origins / impacts / 3-σ ellipses) ─ */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return undefined;
-    const { origins, impacts, ellipses } = debrisFeatures;
-    if (!origins && !impacts && !ellipses) return undefined;
-
-    const apply = () => {
-      if (!styleLoadedRef.current) return;
-
-      // ── 3-σ ellipses (filled + outlined) ─────────────────────
-      if (ellipses) {
-        const SRC = 'debris-ellipses';
-        const FILL = 'debris-ellipses-fill';
-        const LINE = 'debris-ellipses-line';
-        if (map.getSource(SRC)) {
-          map.getSource(SRC).setData(ellipses);
-        } else {
-          map.addSource(SRC, { type: 'geojson', data: ellipses });
-        }
-        if (!map.getLayer(FILL)) {
-          map.addLayer({
-            id: FILL,
-            type: 'fill',
-            source: SRC,
-            paint: {
-              'fill-color': [
-                'case',
-                ['>', ['get', 'harmful'], 0], '#ef4444',
-                '#f59e0b',
-              ],
-              'fill-opacity': 0.10,
-            },
-          });
-        }
-        if (!map.getLayer(LINE)) {
-          map.addLayer({
-            id: LINE,
-            type: 'line',
-            source: SRC,
-            paint: {
-              'line-color': [
-                'case',
-                ['>', ['get', 'harmful'], 0], '#ef4444',
-                '#f59e0b',
-              ],
-              'line-width': 1.5,
-              'line-opacity': 0.65,
-              'line-dasharray': [3, 2],
-            },
-          });
-        }
-      }
-
-      // ── Per-fragment impact dots ─────────────────────────────
-      if (impacts) {
-        const SRC = 'debris-impacts';
-        const LAYER = 'debris-impacts-circle';
-        if (map.getSource(SRC)) {
-          map.getSource(SRC).setData(impacts);
-        } else {
-          map.addSource(SRC, { type: 'geojson', data: impacts });
-        }
-        if (!map.getLayer(LAYER)) {
-          map.addLayer({
-            id: LAYER,
-            type: 'circle',
-            source: SRC,
-          });
-        }
-        // Apply paint each effect run so color/size edits show up after
-        // a hot reload without needing a full browser refresh.
-        const paint = {
-          'circle-radius': [
-            'interpolate', ['linear'], ['zoom'],
-            3,  1.6,
-            10, 3.0,
-            14, 4.5,
-          ],
-          'circle-color': [
-            'case',
-            ['==', ['get', 'status'], 'harmful'], '#ef4444',
-            '#a78bfa',                          // purple — distinct from
-          ],                                     // the blue trajectory line
-          'circle-opacity': 0.78,
-          'circle-stroke-color': '#0b1118',
-          'circle-stroke-width': 0.5,
-          'circle-stroke-opacity': 0.6,
-        };
-        for (const [k, v] of Object.entries(paint)) {
-          try { map.setPaintProperty(LAYER, k, v); } catch { /* ignore */ }
-        }
-      }
-
-      // ── Origin pins (failure points) — drawn last → on top ───
-      if (origins) {
-        const SRC = 'debris-origins';
-        const RING = 'debris-origins-ring';
-        const DOT  = 'debris-origins-dot';
-        if (map.getSource(SRC)) {
-          map.getSource(SRC).setData(origins);
-        } else {
-          map.addSource(SRC, { type: 'geojson', data: origins });
-        }
-        if (!map.getLayer(RING)) {
-          // Halo ring around each origin (red if any harmful in row)
-          map.addLayer({
-            id: RING,
-            type: 'circle',
-            source: SRC,
-            paint: {
-              'circle-radius': 11,
-              'circle-color':  [
-                'case',
-                ['>', ['get', 'harmful'], 0], 'rgba(239, 68, 68, 0.18)',
-                'rgba(245, 158, 11, 0.20)',
-              ],
-              'circle-stroke-color': [
-                'case',
-                ['>', ['get', 'harmful'], 0], '#ef4444',
-                '#f59e0b',
-              ],
-              'circle-stroke-width': 1,
-              'circle-stroke-opacity': 0.6,
-            },
-          });
-        }
-        if (!map.getLayer(DOT)) {
-          map.addLayer({
-            id: DOT,
-            type: 'circle',
-            source: SRC,
-            paint: {
-              'circle-radius': 5,
-              'circle-color': [
-                'case',
-                ['>', ['get', 'harmful'], 0], '#ef4444',
-                '#f59e0b',
-              ],
-              'circle-stroke-color': '#0b1118',
-              'circle-stroke-width': 1.5,
-            },
-          });
-        }
-      }
-    };
-
-    if (styleLoadedRef.current) apply();
-    else map.once('style.load', apply);
-    return undefined;
-  }, [debrisFeatures]);
-
-  /* ── debris layer toggles ─────────────────────────────────── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const set = (id, on) => {
-      if (map.getLayer(id)) {
-        map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
-      }
-    };
-    set('debris-ellipses-fill',  showEllipses);
-    set('debris-ellipses-line',  showEllipses);
-    set('debris-impacts-circle', showImpacts);
-    set('debris-origins-ring',   showOrigins);
-    set('debris-origins-dot',    showOrigins);
-  }, [showEllipses, showImpacts, showOrigins]);
-
-  /* ── highlight the selected row, dim the others ───────────── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const r = selectedRow;
-    const matches = ['==', ['get', 'row'], r];
-
-    const safeSet = (id, key, value) => {
-      if (map.getLayer(id)) {
-        try { map.setPaintProperty(id, key, value); } catch { /* ignore */ }
-      }
-    };
-
-    // ── Impacts ─────────────────────────────────────────────
-    safeSet('debris-impacts-circle', 'circle-opacity',
-      r == null
-        ? 0.78
-        : ['case', matches, 0.95, 0.18]
-    );
-    safeSet('debris-impacts-circle', 'circle-radius',
-      r == null
-        ? ['interpolate', ['linear'], ['zoom'], 3, 1.6, 10, 3.0, 14, 4.5]
-        : [
-            'interpolate', ['linear'], ['zoom'],
-            3,  ['case', matches, 2.4, 1.2],
-            10, ['case', matches, 4.6, 2.2],
-            14, ['case', matches, 6.5, 3.2],
-          ]
-    );
-
-    // ── Origin pins ─────────────────────────────────────────
-    safeSet('debris-origins-ring', 'circle-radius',
-      r == null
-        ? 11
-        : ['case', matches, 16, 9]
-    );
-    safeSet('debris-origins-ring', 'circle-stroke-width',
-      r == null
-        ? 1
-        : ['case', matches, 1.6, 0.8]
-    );
-    safeSet('debris-origins-ring', 'circle-stroke-opacity',
-      r == null
-        ? 0.6
-        : ['case', matches, 0.95, 0.30]
-    );
-    safeSet('debris-origins-dot', 'circle-radius',
-      r == null
-        ? 5
-        : ['case', matches, 7, 4]
-    );
-    safeSet('debris-origins-dot', 'circle-opacity',
-      r == null
-        ? 1
-        : ['case', matches, 1, 0.45]
-    );
-
-    // ── Ellipses ────────────────────────────────────────────
-    safeSet('debris-ellipses-fill', 'fill-opacity',
-      r == null
-        ? 0.10
-        : ['case', matches, 0.22, 0.04]
-    );
-    safeSet('debris-ellipses-line', 'line-opacity',
-      r == null
-        ? 0.65
-        : ['case', matches, 0.95, 0.20]
-    );
-    safeSet('debris-ellipses-line', 'line-width',
-      r == null
-        ? 1.5
-        : ['case', matches, 2.4, 1.2]
-    );
-  }, [selectedRow, debrisFeatures]);
-
-  /* ── click + hover behavior on debris layers ──────────────── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return undefined;
-
-    const popupRef = { current: null };
-
-    const showPopup = (e, kind) => {
-      const f = e.features?.[0];
-      if (!f) return;
-      const p = f.properties || {};
-      const coords = f.geometry.coordinates.slice();
-      // wrap longitude to keep popup on the same world copy as click
-      while (Math.abs(e.lngLat.lng - coords[0]) > 180) {
-        coords[0] += e.lngLat.lng > coords[0] ? 360 : -360;
-      }
-
-      let html;
-      if (kind === 'impact') {
-        const harmful = p.status === 'harmful';
-        html = `
-          <div class="MV-pop">
-            <div class="MV-pop-head">
-              <span class="MV-pop-tag${harmful ? ' MV-pop-tag--harmful' : ''}">
-                ${harmful ? 'HARMFUL' : 'UNHARMED'}
-              </span>
-              <span class="MV-pop-row">Row ${p.row}</span>
-            </div>
-            <div class="MV-pop-grid">
-              <span>Speed</span><span>${formatNumber(p.speed_mps)} m/s</span>
-              <span>Mass</span><span>${formatNumber(p.mass_kg, 3)} kg</span>
-              <span>KE</span><span>${formatEnergy(p.ke_j)}</span>
-            </div>
-          </div>
-        `;
-      } else {
-        // origin
-        html = `
-          <div class="MV-pop">
-            <div class="MV-pop-head">
-              <span class="MV-pop-tag MV-pop-tag--origin">FAILURE PT</span>
-              <span class="MV-pop-row">Row ${p.row}</span>
-            </div>
-            <div class="MV-pop-grid">
-              <span>Time</span><span>${formatNumber(p.time_s)} s</span>
-              <span>Altitude</span><span>${formatAltKm(p.altitude_m)}</span>
-              <span>Impacts</span><span>${p.impact_count ?? '—'}</span>
-              <span>Harmful</span><span class="${(p.harmful || 0) > 0 ? 'MV-pop-harmful' : ''}">${p.harmful ?? 0}</span>
-              ${p.mean_distance != null ? `<span>Mean dist</span><span>${formatDistance(p.mean_distance)}</span>` : ''}
-            </div>
-          </div>
-        `;
-      }
-
-      if (popupRef.current) popupRef.current.remove();
-      popupRef.current = new maplibregl.Popup({
-        offset: kind === 'origin' ? 14 : 10,
-        closeButton: true,
-        closeOnClick: true,
-        maxWidth: '260px',
-      })
-        .setLngLat(coords)
-        .setHTML(html)
-        .addTo(map);
-    };
-
-    const onImpactClick = (e) => {
-      showPopup(e, 'impact');
-      const rowNum = e.features?.[0]?.properties?.row;
-      if (rowNum != null) {
-        // Find the row object in the loaded debris data — needed for
-        // sidebar list highlight + correct camera target on next click.
-        const row = (debris?.rows || []).find((r) => r.row === rowNum);
-        if (row) selectRow(row, { fly: false });
-      }
-    };
-    const onOriginClick = (e) => {
-      showPopup(e, 'origin');
-      const rowNum = e.features?.[0]?.properties?.row;
-      if (rowNum != null) {
-        const row = (debris?.rows || []).find((r) => r.row === rowNum);
-        if (row) selectRow(row, { fly: false });
-      }
-    };
-    const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
-    const onLeave = () => { map.getCanvas().style.cursor = ''; };
-
-    map.on('click',      'debris-impacts-circle', onImpactClick);
-    map.on('mouseenter', 'debris-impacts-circle', onEnter);
-    map.on('mouseleave', 'debris-impacts-circle', onLeave);
-    map.on('click',      'debris-origins-dot',    onOriginClick);
-    map.on('mouseenter', 'debris-origins-dot',    onEnter);
-    map.on('mouseleave', 'debris-origins-dot',    onLeave);
-
-    return () => {
-      map.off('click',      'debris-impacts-circle', onImpactClick);
-      map.off('mouseenter', 'debris-impacts-circle', onEnter);
-      map.off('mouseleave', 'debris-impacts-circle', onLeave);
-      map.off('click',      'debris-origins-dot',    onOriginClick);
-      map.off('mouseenter', 'debris-origins-dot',    onEnter);
-      map.off('mouseleave', 'debris-origins-dot',    onLeave);
-      if (popupRef.current) popupRef.current.remove();
-    };
-  }, [debrisFeatures]);
-
-  /* ── react to track-visibility toggle ─────────────────────── */
-  // We also hide the static (blue) ground track while playback is
-  // running or paused — at self-intersections of the trajectory, the
-  // static line and the dynamic orange trace overlap and the eye
-  // can't tell which arm the rocket "really" took. Stop returns the
-  // state to 'idle', the static line comes back, and you see the
-  // full trace again.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const ids = ['traj-track-line', 'traj-track-glow', 'traj-track-ends-layer'];
-    const visible = showTrack && playState === 'idle';
-    ids.forEach((id) => {
-      if (map.getLayer(id)) {
-        map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-      }
-    });
-  }, [showTrack, playState]);
+  /* All map rendering (Globe + Flat) is handled by Map3D (deck.gl).
+     The old MapLibre engine for the Flat view was removed after
+     MapLibre 5.x shipped unfixable production errors on the CDN
+     build — Map3D was extended to cover mercator instead. */
 
   /* ── auto-fit Map3D to launch site on first load ──────────── */
   // Map3D internally fly-to launch on its own first data load too,
@@ -1043,6 +490,15 @@ function MapView() {
   // accelerates upward (e.g. stage 3 ignition).
   const zoomSmoothRef = useRef(6);
 
+  // Per-i0 cache of the decimated playback trail (see
+  // applyPlaybackFrame) — avoids re-slicing the full trajectory
+  // on every animation frame. Reset whenever the trajectory data
+  // itself changes so a newly-loaded run can't serve stale points.
+  const trailCacheRef = useRef({ i0: -1, trail: null });
+  useEffect(() => {
+    trailCacheRef.current = { i0: -1, trail: null };
+  }, [trajectory3D]);
+
   // ── apply one frame to whichever engine is active ───────────
   // `p` ∈ [0, 1]. We map progress to a position via *cumulative arc
   // length* (not linear sample-index) so the rocket moves at a
@@ -1090,8 +546,35 @@ function MapView() {
     // Map3D handles both projections — only difference is the camera
     // pose (3D pitch+follow in globe, top-down at fixed zoom in
     // mercator). The trail/rocket-overlay payload is identical.
-    const trail = trajectory3D.slice(0, i0 + 1);
-    if (f > 0 && i0 < N - 1) trail.push([lon, lat, alt]);
+    //
+    // Trail construction is the per-frame hot spot: a naive
+    // `slice(0, i0 + 1)` re-allocates an ever-growing array (10k+
+    // points late in flight) 60 times a second. Instead the base
+    // trail is (a) decimated to a bounded vertex count — deck.gl
+    // draws a visually identical comet tail from ~1.5k points — and
+    // (b) cached per `i0`, so per frame we only copy the bounded
+    // array to append the interpolated tip.
+    const MAX_TRAIL_POINTS = 1500;
+    let base = trailCacheRef.current.i0 === i0
+      ? trailCacheRef.current.trail
+      : null;
+    if (!base) {
+      const count = i0 + 1;
+      if (count <= MAX_TRAIL_POINTS) {
+        base = trajectory3D.slice(0, count);
+      } else {
+        const stride = Math.ceil(count / MAX_TRAIL_POINTS);
+        base = [];
+        for (let i = 0; i < count; i += stride) base.push(trajectory3D[i]);
+        if (base[base.length - 1] !== trajectory3D[i0]) {
+          base.push(trajectory3D[i0]);
+        }
+      }
+      trailCacheRef.current = { i0, trail: base };
+    }
+    const trail = (f > 0 && i0 < N - 1)
+      ? [...base, [lon, lat, alt]]
+      : base;
 
     if (projection === 'globe') {
       // Smooth zoom toward the altitude target. Two-stage smoothing:
@@ -1139,7 +622,7 @@ function MapView() {
       rocketPos: [lon, lat, alt],
       pulse,
     });
-  }, [trajectory3D, trajectoryDist, trackCoords, projection]);
+  }, [trajectory3D, trajectoryDist, projection]);
 
   // Drop the playback overlay from Map3D. Called on Stop / unmount /
   // projection-switch.
@@ -1209,7 +692,14 @@ function MapView() {
 
       playProgressRef.current = progress;
       applyPlaybackFrame(progress);
-      setPlayProgressUI(progress);
+      // The sidebar progress bar/time display doesn't need 60 fps —
+      // updating React state every frame re-renders the whole sidebar
+      // at animation rate. ~8 Hz is visually indistinguishable on a
+      // minutes-long playback.
+      if (now - lastUiUpdateRef.current > 120) {
+        lastUiUpdateRef.current = now;
+        setPlayProgressUI(progress);
+      }
       playRafRef.current = requestAnimationFrame(tick);
     };
 
@@ -1680,7 +1170,7 @@ function RunInfo({ traj, loading, empty }) {
     return (
       <div className="MV-runinfo MV-runinfo--dim">
         <span className="eyebrow">Run Info</span>
-        <span className="MV-runinfo-status mono">// loading…</span>
+        <span className="MV-runinfo-status mono">{'// loading…'}</span>
       </div>
     );
   }
@@ -1688,7 +1178,7 @@ function RunInfo({ traj, loading, empty }) {
     return (
       <div className="MV-runinfo MV-runinfo--dim">
         <span className="eyebrow">Run Info</span>
-        <span className="MV-runinfo-status mono">// no run yet</span>
+        <span className="MV-runinfo-status mono">{'// no run yet'}</span>
       </div>
     );
   }
@@ -1948,80 +1438,6 @@ function progressToIndex(progress, distArr) {
   return { i0, i1, f };
 }
 
-/**
- * Split a `[lon, lat]` (or `[lon, lat, …]`) path into separate
- * sub-arrays at every antimeridian crossing — i.e. wherever two
- * adjacent vertices are more than 180° apart in longitude.
- *
- * The simulation outputs longitude via arctan2, so multi-orbit data
- * naturally has a 179.9 → -179.9 jump every lap. If we hand a single
- * LineString with that jump straight to MapLibre, it draws a
- * horizontal line across the whole world to bridge the two vertices.
- * Splitting into a MultiLineString lets each orbit render cleanly
- * in [-180, 180] without touching the simulation's actual values.
- *
- * Returns an array of segments, each ≥ 2 vertices long. Returns []
- * if the input is empty / has fewer than 2 valid vertices.
- */
-function splitAtAntimeridian(coords) {
-  if (!coords || coords.length < 2) return [];
-  const segments = [];
-  let current = [coords[0]];
-  for (let i = 1; i < coords.length; i++) {
-    const prevLon = coords[i - 1][0];
-    const currLon = coords[i][0];
-    if (Math.abs(currLon - prevLon) > 180) {
-      // Antimeridian crossing — close the current segment and start
-      // a new one at the post-crossing vertex.
-      if (current.length >= 2) segments.push(current);
-      current = [coords[i]];
-    } else {
-      current.push(coords[i]);
-    }
-  }
-  if (current.length >= 2) segments.push(current);
-  return segments;
-}
-
-/**
- * Build a GeoJSON FeatureCollection for the dynamic 2D playback
- * trail. One Feature per antimeridian-split segment — that buys us
- * cleaner tiling than a single MultiLineString (each segment lives
- * in its own tile pyramid, so antimeridian crossings can't leak a
- * connecting line at tile boundaries).
- *
- * Slices the ground track from sample 0 through the current index,
- * appends the fractional tip so the trail terminates exactly at the
- * rocket marker, then splits at antimeridian crossings — same data,
- * just multiple LineStrings.
- *
- * Pure function — kept at module scope so applyPlaybackFrame's deps
- * array stays clean.
- */
-function buildTrail2D(trackCoords, idx, tipLonLat) {
-  if (!trackCoords || trackCoords.length < 2) return null;
-  const end = Math.max(2, idx + 1);
-  const slice = trackCoords.slice(0, end);
-  if (tipLonLat) slice.push([tipLonLat[0], tipLonLat[1]]);
-  return featureCollectionFromSegments(splitAtAntimeridian(slice));
-}
-
-/**
- * Wrap an array of `[lon, lat]` segments into a GeoJSON
- * FeatureCollection of LineStrings. Returns null when there are
- * no renderable segments so callers can skip the source update.
- */
-function featureCollectionFromSegments(segments) {
-  if (!segments || segments.length === 0) return null;
-  return {
-    type: 'FeatureCollection',
-    features: segments.map((coords) => ({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: coords },
-      properties: {},
-    })),
-  };
-}
 
 /**
  * Initial bearing on a great-circle path from (lat1, lon1) to
@@ -2051,30 +1467,5 @@ function shortestAngleDelta(from, to) {
   return d;
 }
 
-function formatNumber(v, digits = 2) {
-  if (v == null || !Number.isFinite(v)) return '—';
-  if (Math.abs(v) >= 1000) return v.toFixed(0);
-  if (Math.abs(v) >= 1)    return v.toFixed(digits);
-  return v.toFixed(3);
-}
-
-function formatEnergy(j) {
-  if (j == null || !Number.isFinite(j)) return '—';
-  if (Math.abs(j) >= 1e6) return `${(j / 1e6).toFixed(2)} MJ`;
-  if (Math.abs(j) >= 1e3) return `${(j / 1e3).toFixed(2)} kJ`;
-  return `${j.toFixed(1)} J`;
-}
-
-function formatAltKm(m) {
-  if (m == null || !Number.isFinite(m)) return '—';
-  if (Math.abs(m) >= 1000) return `${(m / 1000).toFixed(1)} km`;
-  return `${m.toFixed(0)} m`;
-}
-
-function formatDistance(m) {
-  if (m == null || !Number.isFinite(m)) return '—';
-  if (Math.abs(m) >= 1000) return `${(m / 1000).toFixed(2)} km`;
-  return `${m.toFixed(0)} m`;
-}
 
 export default MapView;

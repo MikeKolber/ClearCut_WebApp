@@ -46,14 +46,18 @@ class CoordinateTransformation:
 
         return dcm_ecef2ned
 
-    def calculate_launch_azimuth(self, desired_inclination, lat_launch, desired_orbit_height, mu, omega_earth,
-                                 wgs84_mean_radius):
+    def calculate_launch_azimuth(self, desired_inclination, lat_launch, lon_launch, height_launch,
+                                 desired_orbit_height, mu, omega_earth, wgs84_mean_radius):
         launch_azimuth_inertial = np.arcsin(np.cos(np.radians(desired_inclination)) / np.cos(np.radians(lat_launch)))
 
         target_orbit_velocity = np.sqrt(mu / (desired_orbit_height * 1000 + wgs84_mean_radius))
 
-        # Step 3: Earth's Rotation Vector
-        r_0_ecef = lla2ecef(lat_launch, 0, 0)  # Assuming longitude 0 and altitude 0
+        # Step 3: Earth's Rotation Vector — evaluated at the actual launch
+        # site. (The rotation-speed magnitude only depends on the distance
+        # from Earth's axis, so latitude and altitude matter; passing the
+        # real longitude keeps the position vector meaningful for any
+        # future use of the full vector rather than just its norm.)
+        r_0_ecef = lla2ecef(lat_launch, lon_launch, height_launch)
         v_rotation_vector = np.cross(omega_earth, r_0_ecef)
         v_rotation_norm = np.linalg.norm(v_rotation_vector)
 

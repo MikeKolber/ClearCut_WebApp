@@ -1,0 +1,120 @@
+/* PromptDialog — app-styled prompt/confirm modal (replaces the
+   native window.prompt / window.confirm dialogs). Matches the dark
+   HUD language of the load/compare modals. */
+
+.PD-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(3px);
+  animation: PD-in 120ms ease;
+}
+
+@keyframes PD-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.PD-card {
+  width: min(420px, calc(100vw - 48px));
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.PD-head {
+  padding: 12px 16px 0;
+}
+
+.PD-title {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.PD-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 4px;
+}
+
+.PD-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: var(--tracking-mid);
+}
+
+.PD-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.PD-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.PD-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.PD-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 16px 16px;
+}
+
+.PD-btn {
+  padding: 7px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: var(--tracking-mid);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease,
+              background 120ms ease;
+}
+
+.PD-btn:hover {
+  color: var(--text);
+  border-color: var(--border-bright);
+  background: var(--bg-hover);
+}
+
+.PD-btn--primary {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
+.PD-btn--primary:hover {
+  background: var(--accent-soft);
+  color: var(--accent-bright);
+}
+
+.PD-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

@@ -308,7 +308,10 @@ const Map3D = forwardRef(function Map3D(
       // per piece) so deck.gl can't lerp a fake equator-hugging
       // arc through lon=0 between a 179° and -179° vertex.
       if (Array.isArray(trail) && trail.length >= 2) {
-        const flattenedTrail = trail.map(flattenIfMercator);
+        // Globe mode keeps altitudes as-is — skip the per-frame copy.
+        const flattenedTrail = isMercator
+          ? trail.map(flattenIfMercator)
+          : trail;
         const trailData = splitPathAtAntimeridian(flattenedTrail)
           .map((path) => ({ path }));
         next.push(new PathLayer({

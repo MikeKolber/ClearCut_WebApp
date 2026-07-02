@@ -7,10 +7,17 @@ The drawing logic is separated into ``draw_sketch(ax, sd)`` so the GUI
 can render live into its own canvas without going through a raster image.
 """
 
+import os
 from pathlib import Path
 import json
 
 import numpy as np
+import matplotlib
+if os.environ.get("CC_OUTPUT_DIR"):
+    # Web/server mode — headless, no display. Select the non-GUI backend
+    # before pyplot is imported or matplotlib may try (and fail) to open
+    # a window on the server.
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
@@ -39,6 +46,17 @@ TOTAL_X   = 1.3
 TOTAL_TX  = 1.4
 
 SKETCH_DIR = Path(__file__).resolve().parent
+
+
+def _output_dir() -> Path:
+    """Where sketch artefacts (png / pdf / rocket_data.json) are written.
+
+    The web backend sets CC_OUTPUT_DIR to the calling session's private
+    workspace so concurrent users never overwrite each other's rocket
+    geometry. The desktop flow (no env var) keeps writing next to this
+    file, exactly as before."""
+    override = os.environ.get("CC_OUTPUT_DIR")
+    return Path(override) if override else SKETCH_DIR
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -525,7 +543,7 @@ def draw_sketch(ax, sd, horizontal=False):
 def _save_rocket_json(sd):
     """Persist the subset of attributes needed for live drawing."""
     data = {k: float(getattr(sd, k)) for k in _SKETCH_ATTRS}
-    out = SKETCH_DIR / "rocket_data.json"
+    out = _output_dir() / "rocket_data.json"
     out.write_text(json.dumps(data, indent=2))
 
 
@@ -536,10 +554,13 @@ def _save_rocket_json(sd):
 def generate_sketch(static_data):
     """Generate the rocket structure diagram from a StaticMomentOfInertia.
 
-    Saves rocket_structure.png, .pdf, and rocket_data.json into ``src/sketch/``.
+    Saves rocket_structure.png, .pdf, and rocket_data.json into the
+    output directory — CC_OUTPUT_DIR when set (web, per-session), else
+    ``src/sketch/`` (desktop).
     """
     sd = static_data
-    SKETCH_DIR.mkdir(exist_ok=True)
+    out_dir = _output_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     total_height = (sd.payload_length + sd.stage3_length +
                     sd.stage23_interstage_length + sd.stage2_length +
@@ -556,9 +577,9 @@ def generate_sketch(static_data):
     draw_sketch(ax, sd)
 
     plt.subplots_adjust(left=0.08, right=0.82, top=0.94, bottom=0.04)
-    out = SKETCH_DIR / "rocket_structure.png"
+    out = out_dir / "rocket_structure.png"
     plt.savefig(out, dpi=300, bbox_inches='tight', pad_inches=0.8)
-    plt.savefig(SKETCH_DIR / "rocket_structure.pdf",
+    plt.savefig(out_dir / "rocket_structure.pdf",
                 bbox_inches='tight', pad_inches=0.8)
     print(f"\nRocket structure sketch saved to: {out}")
     plt.close(fig)

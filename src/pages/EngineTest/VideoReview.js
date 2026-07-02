@@ -4,6 +4,7 @@ import TopBar from '../../components/TopBar/TopBar';
 import { getEngineTest, engineVideoUrl } from '../../services/api';
 import ErrorToast from '../../components/ErrorToast/ErrorToast';
 import './VideoReview.css';
+import { formatSize } from '../../utils/format';
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4, 8];
 // Order of speeds visited when pressing « or » — first press from 1× → 2×, then 4×, 8×, back to 1×.
@@ -68,6 +69,11 @@ function VideoReview() {
     };
   }, [testName]);
 
+  // True from file switch until the new video's metadata arrives —
+  // drives a small loading overlay so switching between multi-GB
+  // files isn't a silent black stage.
+  const [videoLoading, setVideoLoading] = useState(false);
+
   // When the file changes, reset the player state.
   useEffect(() => {
     setCurrentTime(0);
@@ -77,6 +83,7 @@ function VideoReview() {
     setFps(30);
     setSpeed(1);
     setDirection('forward');
+    setVideoLoading(Boolean(selectedFile));
   }, [selectedFile]);
 
   // Drive playback.
@@ -440,7 +447,7 @@ function VideoReview() {
               {loadingMeta ? (
                 <div className="VR-empty mono">Loading…</div>
               ) : videoFiles.length === 0 ? (
-                <div className="VR-empty mono">// no video files</div>
+                <div className="VR-empty mono">{'// no video files'}</div>
               ) : (
                 videoFiles.map((f) => {
                   const active = f.name === selectedFile;
@@ -449,6 +456,7 @@ function VideoReview() {
                       key={f.name}
                       type="button"
                       className={`VR-listItem${active ? ' VR-listItem--active' : ''}`}
+                      aria-current={active ? 'true' : undefined}
                       onClick={() => setSelectedFile(f.name)}
                       title={f.name}
                     >
@@ -508,13 +516,36 @@ function VideoReview() {
                 src={src}
                 playsInline
                 preload="metadata"
-                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+                onLoadedMetadata={(e) => {
+                  setDuration(e.currentTarget.duration || 0);
+                  setVideoLoading(false);
+                }}
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime || 0)}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onEnded={() => setIsPlaying(false)}
+                onError={() => {
+                  // Missing/corrupt/unsupported file previously failed
+                  // silently, leaving a black stage with a stuck player.
+                  setIsPlaying(false);
+                  setVideoLoading(false);
+                  setError({
+                    kind: 'runtime',
+                    title: 'Could not play this video',
+                    details: [
+                      'The file may be missing, corrupt, or use a codec '
+                      + 'this browser cannot decode.',
+                    ],
+                  });
+                }}
                 onClick={togglePlay}
               />
+
+              {videoLoading && (
+                <div className="VR-loading mono" role="status">
+                  Loading video…
+                </div>
+              )}
 
               {(speed !== 1 || direction === 'reverse') && (
                 <div className="VR-rate-badge mono" aria-live="polite">
@@ -617,6 +648,7 @@ function ControlBar({
       <input
         type="range"
         className="VR-scrubber"
+        aria-label="Seek video"
         min={0}
         max={duration > 0 ? duration : 0.001}
         step="any"
@@ -654,14 +686,7 @@ function ControlBar({
 
 /* ─── helpers ──────────────────────────────────────────────────── */
 
-const KB = 1024, MB = KB * 1024, GB = MB * 1024;
-function formatSize(b) {
-  if (typeof b !== 'number' || !Number.isFinite(b)) return '—';
-  if (b >= GB) return `${(b / GB).toFixed(1)} GB`;
-  if (b >= MB) return `${(b / MB).toFixed(1)} MB`;
-  if (b >= KB) return `${(b / KB).toFixed(0)} KB`;
-  return `${b} B`;
-}
+// formatSize moved to src/utils/format.js (shared).
 
 function pad(n, w = 2) {
   return String(n).padStart(w, '0');

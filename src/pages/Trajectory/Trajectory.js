@@ -43,9 +43,18 @@ import LoadDebrisModal from './LoadDebrisModal';
 import LoadSimulationModal from './LoadSimulationModal';
 import RocketViewerModal from './RocketViewerModal';
 import { RUN_STATE_STORAGE_KEY } from './runState';
+import {
+  collectEmpty,
+  emptyTrajectoryParams,
+  defaultStructureParams,
+  isParamsEmpty,
+  validateAndCollect,
+  validateDebrisParams,
+} from './trajectoryForm';
 import { TIPS } from './paths';
 import Tooltip from '../../components/Tooltip/Tooltip';
 import ErrorToast from '../../components/ErrorToast/ErrorToast';
+import PromptDialog from '../../components/PromptDialog/PromptDialog';
 import './Trajectory.css';
 
 /* ─────────────────────────────────────────────────────────────────
@@ -85,54 +94,8 @@ const PROGRESS_LAG_MS = 500;
 // Cap the sample buffer so a long-running sim doesn't grow it unbounded.
 const PROGRESS_SAMPLE_CAP = 200;
 
-/* Build an empty parameter dict from a schema — every field is set to
-   '' so the inputs render blank on first paint. Used to initialise the
-   trajectory + debris forms so colleagues land on a clean slate
-   instead of a pre-filled "demo" config that might silently roll over
-   into a run if they don't notice. Presets fill the form in one click;
-   manual entry is fully explicit. */
-function collectEmpty(schema) {
-  const out = {};
-  for (const fields of Object.values(schema)) {
-    for (const key of Object.keys(fields)) {
-      out[key] = '';
-    }
-  }
-  return out;
-}
-
-/* Same idea for the trajectory form, which has flat trajectory fields
-   PLUS Stage1 / Stage2 / Stage3 sub-objects (each shaped like
-   `STAGE_PARAMS_PER_STAGE`) PLUS a `structure` sub-object carrying the
-   ~30 fields that used to live in `rocket_structure.yaml`. Returns a
-   value matching the live `params` shape — empty strings for the
-   trajectory fields the user must fill in, and *populated defaults*
-   for structure fields (since the YAML used to provide those values
-   for free and we don't want to force the user to type 30 numbers
-   just to run a default rocket). */
-function emptyTrajectoryParams() {
-  return {
-    ...collectEmpty(TRAJECTORY_PARAMS),
-    Stage1: collectEmpty(STAGE_PARAMS_PER_STAGE),
-    Stage2: collectEmpty(STAGE_PARAMS_PER_STAGE),
-    Stage3: collectEmpty(STAGE_PARAMS_PER_STAGE),
-    structure: defaultStructureParams(),
-  };
-}
-
-/* Default values for the Structure tab — pulled from each field's
-   `default` in STRUCTURE_PARAMS. Used as the starting point both for
-   `emptyTrajectoryParams()` and for the "Reset to defaults" button
-   inside the Structure tab. */
-function defaultStructureParams() {
-  const out = {};
-  for (const fields of Object.values(STRUCTURE_PARAMS)) {
-    for (const [key, meta] of Object.entries(fields)) {
-      out[key] = meta.default ?? '';
-    }
-  }
-  return out;
-}
+/* Empty-state builders + validation now live in ./trajectoryForm.js
+   (pure, unit-tested). This file keeps the orchestration only. */
 
 /* sessionStorage key for the run-state snapshot lives in `./runState`
    — see the import block at the top of this file. The same key is
@@ -441,53 +404,55 @@ function Trajectory() {
   /* ── Save current params as a new preset on disk ─────────── */
   // Mirrors the desktop `save_parameters()` flow: ask for a name
   // (prefilled with `inclination-orbit_height` when available),
-  // POST to the backend, prompt for overwrite on a 409, refresh the
-  // dropdown, and select the just-saved preset.
-  const handleSavePreset = useCallback(async () => {
+  // POST to the backend, ask about overwrite on a 409, refresh the
+  // dropdown, and select the just-saved preset. All the asking
+  // happens through the app-styled PromptDialog (state below) —
+  // no native window.prompt/confirm.
+  const [promptDialog, setPromptDialog] = useState(null);
+
+  const doSavePreset = useCallback(async (name, overwrite = false) => {
+    try {
+      const saved = await saveTrajectoryPreset(name, params, overwrite);
+      setPromptDialog(null);
+      await refreshUserPresets();
+      if (saved?.saved_name) setPresetName(saved.saved_name);
+    } catch (err) {
+      if (!overwrite && err.status === 409 && err.body?.exists) {
+        const proposedName = err.body.name || name;
+        setPromptDialog({
+          mode: 'confirm',
+          title: 'Preset already exists',
+          message: `A preset named "${proposedName}" already exists. Overwrite it?`,
+          submitLabel: 'Overwrite',
+          onConfirm: () => doSavePreset(name, true),
+        });
+      } else {
+        setPromptDialog(null);
+        setRunError({
+          kind: 'runtime',
+          title: 'Could not save preset',
+          details: [err.message || String(err)],
+        });
+      }
+    }
+  }, [params, refreshUserPresets]);
+
+  const handleSavePreset = useCallback(() => {
     const inc = params?.desired_inclination;
     const orbH = params?.desired_orbit_height;
     const suggested =
       Number.isFinite(inc) && Number.isFinite(orbH)
         ? `${Math.round(inc)}-${Math.round(orbH)}`
         : 'preset';
-
-    const raw = window.prompt('Save preset as:', suggested);
-    const name = (raw || '').trim();
-    if (!name) return;
-
-    let saved;
-    try {
-      saved = await saveTrajectoryPreset(name, params, false);
-    } catch (err) {
-      if (err.status === 409 && err.body?.exists) {
-        const proposedName = err.body.name || name;
-        const ok = window.confirm(
-          `A preset named "${proposedName}" already exists.\n\nOverwrite it?`
-        );
-        if (!ok) return;
-        try {
-          saved = await saveTrajectoryPreset(name, params, true);
-        } catch (err2) {
-          setRunError({
-            kind: 'runtime',
-            title: 'Could not save preset',
-            details: [err2.message || String(err2)],
-          });
-          return;
-        }
-      } else {
-        setRunError({
-          kind: 'runtime',
-          title: 'Could not save preset',
-          details: [err.message || String(err)],
-        });
-        return;
-      }
-    }
-
-    await refreshUserPresets();
-    if (saved?.saved_name) setPresetName(saved.saved_name);
-  }, [params, refreshUserPresets]);
+    setPromptDialog({
+      mode: 'input',
+      title: 'Save preset',
+      label: 'Preset name',
+      initialValue: suggested,
+      submitLabel: 'Save',
+      onSubmit: (name) => doSavePreset(name),
+    });
+  }, [params, doSavePreset]);
 
   /* ── Download a local copy of the trajectory preset JSON ──────
    * Companion to handleSavePreset above. "Save as Preset" puts the
@@ -503,10 +468,17 @@ function Trajectory() {
       Number.isFinite(inc) && Number.isFinite(orbH)
         ? `${Math.round(inc)}-${Math.round(orbH)}`
         : 'trajectory-preset';
-    const raw = window.prompt('Download preset as filename:', suggested);
-    const name = (raw || '').trim();
-    if (!name) return;
-    downloadJson(`clearcut-${slugifyFilename(name)}.json`, params);
+    setPromptDialog({
+      mode: 'input',
+      title: 'Download preset',
+      label: 'Filename',
+      initialValue: suggested,
+      submitLabel: 'Download',
+      onSubmit: (name) => {
+        setPromptDialog(null);
+        downloadJson(`clearcut-${slugifyFilename(name)}.json`, params);
+      },
+    });
   }, [params]);
 
   /* ── Debris preset loading + saving ──────────────────────────── */
@@ -546,52 +518,58 @@ function Trajectory() {
       }
     }
 
-    const raw = window.prompt('Save debris preset as:', suggested);
-    const name = (raw || '').trim();
-    if (!name) return;
-
-    let saved;
-    try {
-      saved = await saveDebrisPreset(name, debrisParams, false);
-    } catch (err) {
-      if (err.status === 409 && err.body?.exists) {
-        const proposedName = err.body.name || name;
-        const ok = window.confirm(
-          `A debris preset named "${proposedName}" already exists.\n\nOverwrite it?`
-        );
-        if (!ok) return;
-        try {
-          saved = await saveDebrisPreset(name, debrisParams, true);
-        } catch (err2) {
+    const doSave = async (name, overwrite = false) => {
+      try {
+        const saved = await saveDebrisPreset(name, debrisParams, overwrite);
+        setPromptDialog(null);
+        await refreshUserDebrisPresets();
+        if (saved?.saved_name) setDebrisPresetName(saved.saved_name);
+      } catch (err) {
+        if (!overwrite && err.status === 409 && err.body?.exists) {
+          const proposedName = err.body.name || name;
+          setPromptDialog({
+            mode: 'confirm',
+            title: 'Debris preset already exists',
+            message: `A debris preset named "${proposedName}" already exists. Overwrite it?`,
+            submitLabel: 'Overwrite',
+            onConfirm: () => doSave(name, true),
+          });
+        } else {
+          setPromptDialog(null);
           setRunError({
             kind: 'runtime',
             title: 'Could not save debris preset',
-            details: [err2.message || String(err2)],
+            details: [err.message || String(err)],
           });
-          return;
         }
-      } else {
-        setRunError({
-          kind: 'runtime',
-          title: 'Could not save debris preset',
-          details: [err.message || String(err)],
-        });
-        return;
       }
-    }
+    };
 
-    await refreshUserDebrisPresets();
-    if (saved?.saved_name) setDebrisPresetName(saved.saved_name);
+    setPromptDialog({
+      mode: 'input',
+      title: 'Save debris preset',
+      label: 'Preset name',
+      initialValue: suggested,
+      submitLabel: 'Save',
+      onSubmit: (name) => doSave(name),
+    });
   }, [debrisParams, debrisMode, customPoints, refreshUserDebrisPresets]);
 
   /* ── Download a local copy of the debris preset JSON ─────────
    * Same idea as handleDownloadPreset above, but for the debris tab.
    */
   const handleDownloadDebrisPreset = useCallback(() => {
-    const raw = window.prompt('Download debris preset as filename:', 'debris-preset');
-    const name = (raw || '').trim();
-    if (!name) return;
-    downloadJson(`clearcut-debris-${slugifyFilename(name)}.json`, debrisParams);
+    setPromptDialog({
+      mode: 'input',
+      title: 'Download debris preset',
+      label: 'Filename',
+      initialValue: 'debris-preset',
+      submitLabel: 'Download',
+      onSubmit: (name) => {
+        setPromptDialog(null);
+        downloadJson(`clearcut-debris-${slugifyFilename(name)}.json`, debrisParams);
+      },
+    });
   }, [debrisParams]);
 
   /* ── Preset deletion (trajectory + debris) ─────────────────────────
@@ -729,60 +707,54 @@ function Trajectory() {
      Load Simulation modal's saved list AND in the Compare reference
      set. UX flow mirrors Save Preset: prompt for name, retry with
      overwrite=true on 409. */
-  const handleSaveSimulation = useCallback(async () => {
+  const handleSaveSimulation = useCallback(() => {
     const suggested = (presetName || 'simulation')
       .replace(/[^A-Za-z0-9 ._-]/g, '_')
       .trim() || 'simulation';
-    const name = window.prompt(
-      'Name this saved simulation:',
-      suggested,
-    );
-    if (name == null) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
 
-    try {
-      // Pass the live form params so the backend can drop a JSON
-      // sidecar next to the XLSX. That sidecar carries the full
-      // config — orbit target, per-stage burn times, mass fractions,
-      // everything — so loading the saved sim later restores the
-      // full form state, not just the 5 fields derivable from the
-      // output columns.
-      const res = await saveCurrentSimulation(trimmed, false, params);
-      setRunError({
-        kind: 'success',
-        title: 'Simulation saved',
-        details: [`Saved as "${res.saved_name}".`],
-      });
-    } catch (err) {
-      if (err.status === 409 && err.body?.exists) {
-        const ok = window.confirm(
-          `A saved simulation named "${err.body.name}" already exists.\n\n` +
-          'Overwrite it?'
-        );
-        if (!ok) return;
-        try {
-          const res2 = await saveCurrentSimulation(trimmed, true, params);
-          setRunError({
-            kind: 'success',
-            title: 'Simulation overwritten',
-            details: [`Saved as "${res2.saved_name}".`],
+    const doSave = async (name, overwrite = false) => {
+      try {
+        // Pass the live form params so the backend can drop a JSON
+        // sidecar next to the XLSX. That sidecar carries the full
+        // config — orbit target, per-stage burn times, mass fractions,
+        // everything — so loading the saved sim later restores the
+        // full form state, not just the 5 fields derivable from the
+        // output columns.
+        const res = await saveCurrentSimulation(name, overwrite, params);
+        setPromptDialog(null);
+        setRunError({
+          kind: 'success',
+          title: overwrite ? 'Simulation overwritten' : 'Simulation saved',
+          details: [`Saved as "${res.saved_name}".`],
+        });
+      } catch (err) {
+        if (!overwrite && err.status === 409 && err.body?.exists) {
+          setPromptDialog({
+            mode: 'confirm',
+            title: 'Saved simulation already exists',
+            message: `A saved simulation named "${err.body.name}" already exists. Overwrite it?`,
+            submitLabel: 'Overwrite',
+            onConfirm: () => doSave(name, true),
           });
-        } catch (err2) {
+        } else {
+          setPromptDialog(null);
           setRunError({
             kind: 'runtime',
             title: 'Could not save simulation',
-            details: [err2.message || String(err2)],
+            details: [err.message || String(err)],
           });
         }
-      } else {
-        setRunError({
-          kind: 'runtime',
-          title: 'Could not save simulation',
-          details: [err.message || String(err)],
-        });
       }
-    }
+    };
+
+    setPromptDialog({
+      mode: 'input',
+      title: 'Save simulation',
+      label: 'Simulation name',
+      initialValue: suggested,
+      submitLabel: 'Save',
+      onSubmit: (name) => doSave(name),
+    });
   }, [presetName, params]);
 
   /* ── Download the current simulation output as a CSV/XLSX ────
@@ -854,12 +826,27 @@ function Trajectory() {
     try {
       const raw = sessionStorage.getItem(RUN_STATE_STORAGE_KEY);
       const cur = raw ? JSON.parse(raw) : {};
+      // Write the same complete snapshot shape the persist effect
+      // produces — a partial merge over an empty/stale snapshot left
+      // `runKind` / `params` / `tab` missing, which the restore path
+      // and the freshness helpers then misread.
       sessionStorage.setItem(
         RUN_STATE_STORAGE_KEY,
-        JSON.stringify({ ...cur, phase: 'success', debrisDone: true }),
+        JSON.stringify({
+          ...cur,
+          phase: 'success',
+          runId: null,
+          runKind: 'debris',
+          tab,
+          params,
+          presetName,
+          elapsed,
+          debrisDone: true,
+          savedAt: Date.now(),
+        }),
       );
     } catch { /* ignore */ }
-  }, []);
+  }, [tab, params, presetName, elapsed]);
 
   const handleCompare = useCallback(() => {
     navigate('/trajectory/compare');
@@ -1035,11 +1022,14 @@ function Trajectory() {
       // session doesn't count — refuse with a friendly popup instead of
       // running on top of leftover data the user didn't ask for.
       if (!trajectoryDoneInSession) {
-        window.alert(
-          'Run or load a trajectory simulation first.\n\n' +
-          'Debris analysis samples failure points from a finished ' +
-          'trajectory - it can\'t run on its own.'
-        );
+        setRunError({
+          kind: 'validation',
+          title: 'Run or load a trajectory simulation first',
+          details: [
+            'Debris analysis samples failure points from a finished '
+            + 'trajectory — it can\'t run on its own.',
+          ],
+        });
         return;
       }
 
@@ -1164,6 +1154,14 @@ function Trajectory() {
     setPhase('idle');
     setElapsed(0);
     setRunError(null);
+    // Dismissing the results ends this session's "fresh run" state
+    // everywhere: the result pages (Plot / Map / Raw) already treat
+    // the cleared snapshot as "nothing to show", so the debris gate
+    // and result-card stacking flags must reset with it — otherwise
+    // the debris tab still offers a run against results the rest of
+    // the UI says don't exist.
+    setTrajectoryDoneInSession(false);
+    setDebrisDoneInSession(false);
   }, [phase, runId, runKind, tab, trajectoryDoneInSession, startRun]);
 
   /**
@@ -1375,6 +1373,11 @@ function Trajectory() {
           onSelect={onPickDebrisRun}
         />
       )}
+
+      <PromptDialog
+        dialog={promptDialog}
+        onClose={() => setPromptDialog(null)}
+      />
 
       {missionLockKey > 0 && <MissionLockPulse key={missionLockKey} />}
     </>
@@ -1892,7 +1895,7 @@ function PresetPicker({
                       key={it.name}
                       type="button"
                       role="option"
-                      aria-pressed={isOn}
+                      aria-selected={isOn}
                       className={
                         'TR-preset-item TR-preset-item--select' +
                         (isOn ? ' TR-preset-item--checked' : '')
@@ -2255,6 +2258,9 @@ function Field({ meta, value, onChange, error }) {
       <span className="TR-field-input-wrap">
         <input
           type="text"
+          // Numeric keyboard on touch devices for the (overwhelmingly
+          // numeric) trajectory fields; string fields keep free typing.
+          inputMode={meta.type === 'str' ? 'text' : 'decimal'}
           className="TR-field-input mono"
           value={value ?? ''}
           onChange={(e) => onChange(e.target.value)}
@@ -2739,12 +2745,19 @@ function RunBlock({ phase, onRun, kind = 'trajectory' }) {
   //   running → progress bar + cancel × box carry the UI.
   //   success → progress bar + reload ↻ box carry the UI.
   const [igniting, setIgniting] = useState(false);
+  const ignitionTimerRef = useRef(null);
 
   // When `phase` flips out of idle (i.e. the run actually started),
   // we tear down. Anything mid-ignition just gets cancelled.
   useEffect(() => {
     if (phase !== 'idle' && igniting) setIgniting(false);
   }, [phase, igniting]);
+
+  // Clear a pending ignition timer on unmount so `onRun` can't fire
+  // after the user has navigated away mid-animation.
+  useEffect(() => () => {
+    if (ignitionTimerRef.current) clearTimeout(ignitionTimerRef.current);
+  }, []);
 
   if (phase !== 'idle') return null;
   const label = kind === 'debris' ? 'Run Debris Analysis' : 'Run Simulation';
@@ -2755,7 +2768,7 @@ function RunBlock({ phase, onRun, kind = 'trajectory' }) {
     // The ignition CSS animation takes ~700 ms; fire `onRun` close to
     // its peak so the actual progress-bar / phase change feels like
     // it's *caused* by the ignition — not a separate event.
-    setTimeout(() => onRun?.(), 520);
+    ignitionTimerRef.current = setTimeout(() => onRun?.(), 520);
   };
 
   return (
@@ -3091,224 +3104,8 @@ function SaveGlyph(props) {
   );
 }
 
-/* ═══ Helpers ════════════════════════════════════════════════ */
 
-/**
- * "Has the user actually entered anything in the trajectory form?"
- * True iff every flat field is empty AND every stage's nested fields
- * are empty. Used to decide whether to show the first-time "pick a
- * preset to get started" hint in the sidebar.
- */
-function isParamsEmpty(params) {
-  if (!params) return true;
-  for (const fields of Object.values(TRAJECTORY_PARAMS)) {
-    for (const key of Object.keys(fields)) {
-      const v = params[key];
-      if (v !== '' && v !== null && v !== undefined) return false;
-    }
-  }
-  for (const stageKey of ['Stage1', 'Stage2', 'Stage3']) {
-    const stage = params[stageKey] || {};
-    for (const key of Object.keys(STAGE_PARAMS_PER_STAGE)) {
-      const v = stage[key];
-      if (v !== '' && v !== null && v !== undefined) return false;
-    }
-  }
-  return true;
-}
 
-/**
- * Walk the trajectory + stage schemas, coerce each value to the right type,
- * and assemble the JSON the simulator wants. Mirrors the desktop's
- * `_validate_and_collect()` + `_write_current_config()` flow:
- *   - Required fields with empty / non-numeric values become validation errors.
- *   - Numbers get parsed (`int` / `float`); strings pass through.
- *   - The fairing-release-conditions block the desktop tacks on at runtime is
- *     added here so simulation.py can read it from `_current.json`.
- */
-function validateAndCollect(params) {
-  const errors = [];
-  const config = {};
-
-  const coerce = (raw, type) => {
-    if (raw === null || raw === undefined || raw === '') return null;
-    if (type === 'int') {
-      const v = parseInt(raw, 10);
-      return Number.isFinite(v) ? v : NaN;
-    }
-    if (type === 'float') {
-      const v = typeof raw === 'number' ? raw : parseFloat(raw);
-      return Number.isFinite(v) ? v : NaN;
-    }
-    return String(raw);
-  };
-
-  // Trajectory params
-  for (const [section, fields] of Object.entries(TRAJECTORY_PARAMS)) {
-    for (const [key, meta] of Object.entries(fields)) {
-      const raw = params[key];
-      const value = coerce(raw, meta.type);
-      if (value === null) {
-        errors.push(`${section} > ${meta.label} is empty`);
-        continue;
-      }
-      if (typeof value === 'number' && !Number.isFinite(value)) {
-        errors.push(`${section} > ${meta.label}: invalid number "${raw}"`);
-        continue;
-      }
-      config[key] = value;
-    }
-  }
-
-  // Stage params (Stage1, Stage2, Stage3 — always all three, simulator uses
-  // no_of_stages to know which ones to actually fire).
-  for (const stageKey of ['Stage1', 'Stage2', 'Stage3']) {
-    const stage = params[stageKey] || {};
-    config[stageKey] = {};
-    for (const [key, meta] of Object.entries(STAGE_PARAMS_PER_STAGE)) {
-      const raw = stage[key];
-      const value = coerce(raw, meta.type);
-      if (value === null) {
-        errors.push(`${stageKey} > ${meta.label} is empty`);
-        continue;
-      }
-      if (typeof value === 'number' && !Number.isFinite(value)) {
-        errors.push(`${stageKey} > ${meta.label}: invalid number "${raw}"`);
-        continue;
-      }
-      config[stageKey][key] = value;
-    }
-  }
-
-  // Structure params (CoM / MoI inputs that used to live in
-  // rocket_structure.yaml). Empty fields silently fall back to the
-  // Python side's STRUCTURE_DEFAULTS — they're decorative defaults,
-  // not hard requirements — so empty isn't an error. Invalid numbers
-  // (NaN) ARE flagged.
-  const structure = params.structure || {};
-  const structureOut = {};
-  for (const [section, fields] of Object.entries(STRUCTURE_PARAMS)) {
-    for (const [key, meta] of Object.entries(fields)) {
-      const raw = structure[key];
-      if (raw === '' || raw === null || raw === undefined) continue;
-      if (meta.type === 'enum') {
-        if (Array.isArray(meta.options) && !meta.options.includes(raw)) {
-          errors.push(`${section} > ${meta.label}: "${raw}" not in ${meta.options.join('/')}`);
-          continue;
-        }
-        structureOut[key] = String(raw);
-        continue;
-      }
-      const value = coerce(raw, meta.type);
-      if (typeof value === 'number' && !Number.isFinite(value)) {
-        errors.push(`${section} > ${meta.label}: invalid number "${raw}"`);
-        continue;
-      }
-      structureOut[key] = value;
-    }
-  }
-
-  // Sanity bounds — the Python side trusts the JSON, so we catch
-  // physically nonsensical values here before they cause divide-by-
-  // zero or negative geometry downstream.
-  const num = (k) => {
-    const v = structureOut[k];
-    return typeof v === 'number' && Number.isFinite(v) ? v : null;
-  };
-  const eir = num('engine_inner_radius_m');
-  const eor = num('engine_outer_radius_m');
-  if (eir !== null && eor !== null && eor <= eir) {
-    errors.push(
-      `Engines (Global) > Engine Outer Radius must be greater than Inner Radius `
-      + `(${eor} ≤ ${eir})`
-    );
-  }
-  const tt = num('tank_thickness_m');
-  if (tt !== null && tt <= 0) {
-    errors.push(`Tanks (Global) > Tank Wall Thickness must be > 0`);
-  }
-  for (const N of [1, 2, 3]) {
-    const of = num(`Stage${N}_of_ratio`);
-    if (of !== null && of <= 0) {
-      errors.push(`Stage ${N} Structure > O/F Ratio must be > 0`);
-    }
-    const fd = num(`Stage${N}_fuel_density`);
-    const od = num(`Stage${N}_ox_density`);
-    if (fd !== null && fd <= 0) errors.push(`Stage ${N} Structure > Fuel Density must be > 0`);
-    if (od !== null && od <= 0) errors.push(`Stage ${N} Structure > Ox Density must be > 0`);
-  }
-
-  // Pivot the flat `Stage{N}_xxx` keys into per-stage sub-objects
-  // matching what `_reshape_json_config` on the Python side expects.
-  // Globals stay flat at the top of the structure block.
-  const structureBlock = {};
-  for (const [k, v] of Object.entries(structureOut)) {
-    const m = k.match(/^Stage(\d)_(.+)$/);
-    if (m) {
-      const [, n, field] = m;
-      const key = `Stage${n}`;
-      if (!structureBlock[key]) structureBlock[key] = {};
-      structureBlock[key][field] = v;
-    } else {
-      structureBlock[k] = v;
-    }
-  }
-  if (Object.keys(structureBlock).length > 0) {
-    config.structure = structureBlock;
-  }
-
-  // Magic block the desktop GUI also adds before writing _current.json.
-  config.fairing_release_conditions = { min_altitude: 120000 };
-
-  return { errors, config };
-}
-
-/**
- * Walk DEBRIS_PARAMS and check that every required field has a finite
- * value. Mirrors validateAndCollect for the trajectory form. Skips
- * `failure_interval_s` when the user picked Custom mode (they're
- * providing explicit time points instead) and requires at least one
- * valid custom point in that mode.
- */
-function validateDebrisParams(params, mode, customPoints) {
-  const errors = [];
-  const config = {};
-
-  for (const [section, fields] of Object.entries(DEBRIS_PARAMS)) {
-    for (const [key, meta] of Object.entries(fields)) {
-      // In Custom mode the interval is unused — don't require it.
-      if (key === 'failure_interval_s' && mode === 'custom') continue;
-
-      const raw = params[key];
-      if (raw === '' || raw === null || raw === undefined) {
-        errors.push(`${section} > ${meta.label} is empty`);
-        continue;
-      }
-
-      if (meta.type === 'float' || meta.type === 'int') {
-        const v = meta.type === 'int' ? parseInt(raw, 10) : parseFloat(raw);
-        if (!Number.isFinite(v)) {
-          errors.push(`${section} > ${meta.label}: invalid number "${raw}"`);
-          continue;
-        }
-        config[key] = v;
-      } else {
-        config[key] = String(raw);
-      }
-    }
-  }
-
-  if (mode === 'custom') {
-    const valid = customPoints
-      .map((p) => parseFloat(p))
-      .filter((v) => Number.isFinite(v));
-    if (valid.length === 0) {
-      errors.push('Failure Points: provide at least one valid time');
-    }
-  }
-
-  return { errors, config };
-}
 
 function summarizeSection(fields, values) {
   // Compact one-line summary when the section is collapsed.

@@ -472,6 +472,32 @@ commands). You're current.
 
 ---
 
+## Development: tests, lint & CI
+
+> For anyone changing the code. Day-to-day users can skip it.
+
+Every push and pull request runs the CI workflow
+(`.github/workflows/ci.yml`): frontend lint + unit tests + a
+production build (warnings are errors), and backend Ruff lint +
+pytest. Since pushing to `main` auto-deploys to Render, keep CI green.
+
+Run everything locally before pushing:
+
+```bash
+# Frontend unit tests + production build
+CI=true npx react-scripts test --watchAll=false
+CI=true npm run build
+
+# Backend lint + tests (from the repo root / backend dir)
+ruff check .
+cd backend && python -m pytest tests/
+```
+
+The backend tests run against a throwaway data directory — they never
+touch your real presets or sessions.
+
+---
+
 ## Configuration & deployment
 
 > This section is for whoever runs/operates the app. Day-to-day users can

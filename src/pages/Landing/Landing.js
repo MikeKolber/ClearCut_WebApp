@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import NavButton from '../../components/NavButton/NavButton';
 import { ping, listEngineTests } from '../../services/api';
 import logoUrl from '../../assets/clearcut-logo.png';
+import { APP_VERSION } from '../../version';
 import './Landing.css';
 
-const BUILD_VERSION = '1.0';
+const BUILD_VERSION = APP_VERSION;
 
 /**
  * Landing — front desk of the ClearCut suite.
@@ -161,6 +162,7 @@ function Landing() {
                 status={m.status}
                 Preview={m.Preview}
                 index={i}
+                shortcut={String(i + 1)}
                 onClick={() => navigate(m.route)}
               />
             ))}
@@ -168,7 +170,12 @@ function Landing() {
         </section>
       </div>
 
-      <footer className="Landing-footer" aria-hidden="true" />
+      <footer className="Landing-footer mono">
+        <span className="Landing-footer-brand">
+          ClearCut Space · Internal Engineering Suite
+        </span>
+        <span className="Landing-footer-build">BUILD v{BUILD_VERSION}</span>
+      </footer>
     </div>
   );
 }

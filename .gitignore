@@ -34,6 +34,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
 venv/
 .venv/
 env/
@@ -44,6 +45,11 @@ env/
 # git rather than blowing past the 100 MB-per-file limit.
 physics_engines/core/Trajectory Simulation/output/
 physics_engines/core/Trajectory Simulation/debris_data/
+# Per-session workspaces + shared preset library the backend creates at
+# runtime (CC_DATA_DIR defaults to the Trajectory Simulation folder in
+# local dev; in production these live on the Render disk at /var/data).
+physics_engines/core/Trajectory Simulation/sessions/
+physics_engines/core/Trajectory Simulation/shared/
 backend/__pycache__/
 backend/.compare_cache/
 

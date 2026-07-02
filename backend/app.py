@@ -32,7 +32,6 @@ import subprocess
 import sys
 import threading
 import time
-import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -228,10 +227,7 @@ else:
 
 # Engine-test storage backend — picks local-disk or Cloudflare R2 based
 # on env vars. See `engine_test_storage.py` for details.
-from engine_test_storage import (  # noqa: E402
-    VIDEO_EXTENSIONS,
-    get_engine_test_storage,
-)
+from engine_test_storage import get_engine_test_storage  # noqa: E402
 
 try:
     _engine_test_storage = get_engine_test_storage(_ENGINE_TESTS_DATA)
@@ -242,6 +238,20 @@ except Exception as exc:
 
 
 app = Flask(__name__)
+
+# Render (and any typical production setup) puts one reverse proxy in
+# front of the app, so request.remote_addr would otherwise be the
+# proxy's IP for every client — making the login rate limiter useless
+# (or, worse, one user's failures would lock everyone out together).
+# ProxyFix trusts exactly one X-Forwarded-For hop; with no proxy (local
+# dev) it changes nothing.
+from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+
+# Reject request bodies over 200 MB (covers the biggest legitimate
+# saved-sim CSV uploads with headroom) so a single oversized upload
+# can't exhaust the 2 GB production instance.
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 
 # CORS: allow credentials so the auth cookie can travel cross-origin if a
 # deployer points the frontend at this backend with a different REACT_APP_API_BASE.
@@ -275,7 +285,6 @@ CORS(app, supports_credentials=True, origins=_CORS_ORIGINS)
 # ---------------------------------------------------------------------------
 
 import secrets
-from functools import wraps
 
 import bcrypt
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -292,7 +301,12 @@ CC_USERNAME = os.environ.get("CC_USERNAME", _DEFAULT_USERNAME).strip()
 CC_PASSWORD_HASH = os.environ.get("CC_PASSWORD_HASH", _DEFAULT_PASSWORD_HASH).strip()
 _SECRET_FROM_ENV = (os.environ.get("CC_SECRET_KEY") or "").strip()
 CC_SECRET_KEY = _SECRET_FROM_ENV or secrets.token_urlsafe(32)
-CC_SESSION_HOURS = int(os.environ.get("CC_SESSION_HOURS", "12").strip())
+try:
+    CC_SESSION_HOURS = int(os.environ.get("CC_SESSION_HOURS", "12").strip())
+except ValueError:
+    print("[clearcut-auth] WARNING: CC_SESSION_HOURS is not an integer; "
+          "falling back to 12.", file=sys.stderr, flush=True)
+    CC_SESSION_HOURS = 12
 CC_COOKIE_SECURE = os.environ.get("CC_COOKIE_SECURE", "0").strip() == "1"
 
 _AUTH_COOKIE_NAME = "cc_session"
@@ -304,7 +318,21 @@ _AUTH_PUBLIC_PATHS = {
     "/api/auth/whoami",
 }
 
-if CC_USERNAME == _DEFAULT_USERNAME or CC_PASSWORD_HASH == _DEFAULT_PASSWORD_HASH:
+_USING_DEFAULT_CREDS = (
+    CC_USERNAME == _DEFAULT_USERNAME
+    or CC_PASSWORD_HASH == _DEFAULT_PASSWORD_HASH
+)
+if _USING_DEFAULT_CREDS and CC_COOKIE_SECURE:
+    # CC_COOKIE_SECURE=1 is the production signal. A warning is easy to
+    # miss in Render's logs — refusing to boot is not.
+    print(
+        "\n[clearcut-auth] FATAL: CC_COOKIE_SECURE=1 (production) but the "
+        "login is still the default admin / admin. Set CC_USERNAME and "
+        "CC_PASSWORD_HASH before deploying. Refusing to start.\n",
+        file=sys.stderr, flush=True,
+    )
+    sys.exit(1)
+if _USING_DEFAULT_CREDS:
     print(
         "\n[clearcut-auth] WARNING: using DEFAULT credentials (admin / admin). "
         "Set CC_USERNAME and CC_PASSWORD_HASH before deploying.\n",
@@ -418,6 +446,19 @@ def _enforce_auth():
         return None
     if request.method == "OPTIONS":
         return None
+
+    # CSRF guard for every mutating request (including login): the
+    # frontend always sends this custom header, and browsers refuse to
+    # attach custom headers to cross-site form posts / top-level
+    # navigations, so a malicious site can't forge state-changing
+    # requests with the user's cookie. (Cross-origin XHR with the
+    # header would need a CORS preflight, which the allowlist rejects.)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.headers.get("X-CC-Request") != "1":
+            return jsonify({
+                "error": "missing X-CC-Request header (CSRF protection)",
+            }), 403
+
     if p in _AUTH_PUBLIC_PATHS:
         return None
     if _current_user() is None:
@@ -465,7 +506,16 @@ def auth_login():
 @app.post("/api/auth/logout")
 def auth_logout():
     resp = jsonify({"ok": True})
-    resp.delete_cookie(_AUTH_COOKIE_NAME, path="/")
+    # delete_cookie must carry the same secure/samesite attributes as
+    # set_cookie did — browsers treat cookies with different attributes
+    # as distinct, so an attribute-less delete can leave the production
+    # (SameSite=None; Secure) cookie in place after "logout".
+    resp.delete_cookie(
+        _AUTH_COOKIE_NAME,
+        path="/",
+        secure=CC_COOKIE_SECURE,
+        samesite="None" if CC_COOKIE_SECURE else "Strict",
+    )
     return resp
 
 
@@ -487,20 +537,22 @@ def _now_iso() -> str:
 
 @app.get("/api/ping")
 def ping():
-    if _engine_test_storage is not None:
-        engine_tests_status = f"ok ({_engine_test_storage.description})"
-    else:
-        engine_tests_status = f"unavailable: {_ENGINE_TEST_STORAGE_ERROR}"
-    return jsonify(
-        {
-            "status": "ok",
-            "time": _now_iso(),
-            "engines": {
-                "pbs": "ok" if calculate_pbs else f"unavailable: {_PBS_IMPORT_ERROR}",
-                "engine_tests": engine_tests_status,
-            },
+    """Health check. The endpoint is public (Render's health checker and
+    the login page's status dot both hit it pre-auth), so the anonymous
+    response is minimal. Engine/storage diagnostics — which include
+    import errors and the storage backend description — are only added
+    for authenticated callers."""
+    out = {"status": "ok", "time": _now_iso()}
+    if _current_user() is not None:
+        if _engine_test_storage is not None:
+            engine_tests_status = f"ok ({_engine_test_storage.description})"
+        else:
+            engine_tests_status = f"unavailable: {_ENGINE_TEST_STORAGE_ERROR}"
+        out["engines"] = {
+            "pbs": "ok" if calculate_pbs else f"unavailable: {_PBS_IMPORT_ERROR}",
+            "engine_tests": engine_tests_status,
         }
-    )
+    return jsonify(out)
 
 
 # ---------------------------------------------------------------------------
@@ -555,14 +607,12 @@ def pbs_calculate():
     try:
         result = calculate_pbs(stage_data, num_stages)
     except Exception as exc:
+        # Full traceback goes to the server log only — it exposes
+        # filesystem paths and internals that don't belong in a client
+        # response. The message + exception type are enough for the UI.
+        app.logger.exception("PBS calculation failed")
         return (
-            jsonify(
-                {
-                    "error": str(exc),
-                    "type": type(exc).__name__,
-                    "traceback": traceback.format_exc(limit=8),
-                }
-            ),
+            jsonify({"error": str(exc), "type": type(exc).__name__}),
             500,
         )
 
@@ -950,9 +1000,22 @@ def trajectory_output():
             {
                 "exists": False,
                 "message": "No simulation output yet. Run a trajectory simulation first.",
-                "path": str(csv_path),
             }
         )
+
+    # Conditional-request shortcut: the response is fully determined by
+    # (session, file mtime, decimation cap), so an ETag lets a repeat
+    # visit to the Plot page skip the CSV parse + derived-channel maths
+    # + ~10k-row JSON serialisation entirely.
+    try:
+        _mtime = csv_path.stat().st_mtime_ns
+    except OSError:
+        _mtime = 0
+    etag = f"traj-{_current_sid()}-{_mtime}-{_TRAJ_MAX_POINTS}"
+    if request.if_none_match.contains(etag):
+        resp304 = Response(status=304)
+        resp304.set_etag(etag)
+        return resp304
 
     try:
         import pandas as pd
@@ -1023,7 +1086,7 @@ def trajectory_output():
     )
     elapsed = time.perf_counter() - t0
 
-    return jsonify(
+    resp = jsonify(
         {
             "exists":             True,
             "row_count":          int(len(df)),
@@ -1036,6 +1099,11 @@ def trajectory_output():
             "load_time_s":        round(elapsed, 3),
         }
     )
+    resp.set_etag(etag)
+    # no-cache = "revalidate every time" (via If-None-Match), NOT
+    # "don't cache" — exactly what we want for per-session live data.
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -1054,6 +1122,49 @@ _active_runs: dict[str, dict] = {}
 _runs_lock = threading.Lock()
 _PHASE_LABELS = ("Initializing", "Simulating", "Saving results")
 _LOG_BUFFER_MAX = 400
+
+# Finished run records are kept around for a while so the frontend can
+# keep polling after completion (and rehydrate after a page refresh),
+# then dropped so the long-lived process doesn't accumulate dead state.
+_RUN_TTL_S = 3600.0
+_RUN_REGISTRY_MAX = 50
+
+
+def _prune_finished_runs(registry: dict[str, dict],
+                         lock: threading.Lock) -> None:
+    """Drop finished/failed/cancelled run records older than the TTL and
+    enforce a hard cap on registry size. Running entries are never touched.
+    Called from the cheap paths (run start), so no periodic timer needed."""
+    now = time.time()
+    with lock:
+        stale = [
+            rid for rid, r in registry.items()
+            if r["status"] != "running"
+            and now - r.get("finished_at", now) > _RUN_TTL_S
+        ]
+        for rid in stale:
+            registry.pop(rid, None)
+        if len(registry) > _RUN_REGISTRY_MAX:
+            finished = sorted(
+                (
+                    (rid, r) for rid, r in registry.items()
+                    if r["status"] != "running"
+                ),
+                key=lambda kv: kv[1].get("finished_at", 0.0),
+            )
+            for rid, _r in finished[: len(registry) - _RUN_REGISTRY_MAX]:
+                registry.pop(rid, None)
+
+
+def _session_has_running(registry: dict[str, dict], lock: threading.Lock,
+                         sid: str) -> str | None:
+    """Return the run_id of a currently-running entry owned by `sid`,
+    or None. Used to reject concurrent runs within one session."""
+    with lock:
+        for rid, r in registry.items():
+            if r.get("sid") == sid and r["status"] == "running":
+                return rid
+    return None
 
 
 def _phase_for_progress(p: float) -> str:
@@ -1127,6 +1238,9 @@ def _read_simulation_output(run_id: str):
             return
         run["elapsed_s"] = time.perf_counter() - run["start_time"]
         run["log_lines"] = list(log_lines[-60:])
+        run["finished_at"] = time.time()
+        run["proc"] = None          # free the Popen/pipe handles
+        sid = run.get("sid")
         if run["status"] == "cancelled":
             return
         if proc.returncode == 0:
@@ -1137,9 +1251,13 @@ def _read_simulation_output(run_id: str):
             # first /trajectory/raw click doesn't have to wait for the
             # cold CSV read. ~1-3 s of background work that happens
             # while the user is looking at the success cards anyway.
-            threading.Thread(
-                target=_load_full_trajectory_df, daemon=True
-            ).start()
+            # The sid was stashed on the run record at spawn time —
+            # this thread has no request context to resolve it from.
+            if sid:
+                _invalidate_raw_cache(sid)
+                threading.Thread(
+                    target=_load_full_trajectory_df, args=(sid,), daemon=True
+                ).start()
         else:
             run["status"] = "failed"
             tail = stderr_lines[-12:] if stderr_lines else log_lines[-12:]
@@ -1413,16 +1531,20 @@ def _load_compare_df(path: Path):
             _COMPARE_DF_CACHE[key] = (mtime, df)
             return df
         except Exception:
-            try: feather_path.unlink()
-            except OSError: pass
+            try:
+                feather_path.unlink()
+            except OSError:
+                pass
     if pickle_path.exists():
         try:
             df = pd.read_pickle(pickle_path)
             _COMPARE_DF_CACHE[key] = (mtime, df)
             return df
         except Exception:
-            try: pickle_path.unlink()
-            except OSError: pass
+            try:
+                pickle_path.unlink()
+            except OSError:
+                pass
 
     # Cold path: parse the source. ~5–15s for big xlsx.
     try:
@@ -1450,8 +1572,10 @@ def _load_compare_df(path: Path):
         prefix = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in path.name) + "__"
         for old in _COMPARE_CACHE_DIR.glob(f"{prefix}*"):
             if old not in (feather_path, pickle_path):
-                try: old.unlink()
-                except OSError: pass
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
         try:
             df.to_feather(feather_path)
         except Exception:
@@ -1536,7 +1660,8 @@ def _derive_config_from_df(df):
             v = safe_num(last.get("mass_kg"))
             if v is not None and v > 0:
                 derived["final_payload_mass"] = round(v, 1)
-    except Exception:  # noqa: BLE001 — best-effort, never block load
+    except Exception:
+         # noqa: BLE001 — best-effort, never block load
         return {}
     return derived
 
@@ -1592,14 +1717,19 @@ def trajectory_load_file():
     # rederives from the just-loaded CSV.
     xlsx_out = _session_output_dir() / "simulation_output.xlsx"
     if xlsx_out.exists():
-        try: xlsx_out.unlink()
-        except OSError: pass
+        try:
+            xlsx_out.unlink()
+        except OSError:
+            pass
 
     # Invalidate the in-memory CSV cache and immediately rewarm so the
-    # next /raw call avoids a parse round-trip.
-    _TRAJ_RAW_CACHE["mtime"] = 0.0
-    _TRAJ_RAW_CACHE["df"] = None
-    threading.Thread(target=_load_full_trajectory_df, daemon=True).start()
+    # next /raw call avoids a parse round-trip. The sid is captured here
+    # (in request context) and passed explicitly to the warm thread.
+    sid = _current_sid()
+    _invalidate_raw_cache(sid)
+    threading.Thread(
+        target=_load_full_trajectory_df, args=(sid,), daemon=True
+    ).start()
 
     return jsonify({
         "rows":    int(len(df)),
@@ -1705,8 +1835,10 @@ def trajectory_save_current():
         # any orphan sidecar so it doesn't lie about the new contents.
         stale = _TRAJ_PRELOADED_DIR / f"{safe}.json"
         if stale.exists():
-            try: stale.unlink()
-            except OSError: pass
+            try:
+                stale.unlink()
+            except OSError:
+                pass
 
     # Keep the Compare page's two-tier cache honest about the new file.
     # `_load_compare_df` keys on (path, mtime), so the next compare
@@ -1716,7 +1848,8 @@ def trajectory_save_current():
         threading.Thread(
             target=_load_compare_df, args=(target,), daemon=True,
         ).start()
-    except Exception:                         # noqa: BLE001
+    except Exception:
+                                # noqa: BLE001
         pass
 
     return jsonify({"saved_name": safe, "filename": target.name})
@@ -1786,11 +1919,15 @@ def trajectory_load_saved():
     # so the Plot/Map/Raw pages reflect the just-loaded data.
     xlsx_out = _session_output_dir() / "simulation_output.xlsx"
     if xlsx_out.exists():
-        try: xlsx_out.unlink()
-        except OSError: pass
-    _TRAJ_RAW_CACHE["mtime"] = 0.0
-    _TRAJ_RAW_CACHE["df"] = None
-    threading.Thread(target=_load_full_trajectory_df, daemon=True).start()
+        try:
+            xlsx_out.unlink()
+        except OSError:
+            pass
+    sid = _current_sid()
+    _invalidate_raw_cache(sid)
+    threading.Thread(
+        target=_load_full_trajectory_df, args=(sid,), daemon=True
+    ).start()
 
     # Look for the JSON sidecar written by `save-current`. When the
     # saved sim was created by the same UI session it'll be sitting
@@ -1858,8 +1995,10 @@ def trajectory_delete_saved(filename: str):
     # Drop the matching JSON config sidecar (best-effort).
     sidecar = candidate.with_suffix(".json")
     if sidecar.is_file():
-        try: sidecar.unlink()
-        except OSError: pass
+        try:
+            sidecar.unlink()
+        except OSError:
+            pass
 
     # Drop any compare-cache sidecars + the in-memory entry so the
     # Compare page doesn't try to read a now-missing source on its
@@ -1871,16 +2010,15 @@ def trajectory_delete_saved(filename: str):
             c if (c.isalnum() or c in "-_.") else "_" for c in candidate.name
         ) + "__"
         for old in _COMPARE_CACHE_DIR.glob(f"{prefix}*"):
-            try: old.unlink()
-            except OSError: pass
+            try:
+                old.unlink()
+            except OSError:
+                pass
 
     return jsonify({"deleted": fname})
 
 
 # ── Rocket structure (3D viewer source data) ────────────────────────
-
-_TRAJ_ROCKET_DATA = _TRAJ_ROOT / "src" / "sketch" / "rocket_data.json"
-
 
 @app.get("/api/trajectory/rocket-structure")
 def trajectory_rocket_structure():
@@ -1891,11 +2029,17 @@ def trajectory_rocket_structure():
     / fairing geometry (lengths, radii, propellant masses) written by
     `generate_sketch.py` at the end of every successful sim run.
 
+    The file lives in the session's private output dir (written there
+    because the backend sets CC_OUTPUT_DIR on the sim subprocess), so
+    each coworker's 3D viewer shows the rocket from *their* run —
+    never a concurrent user's.
+
     Returns 404 with a helpful message if no sim has produced the file
     yet — the frontend uses this to show "Run a simulation first"
     instead of an error.
     """
-    if not _TRAJ_ROCKET_DATA.exists():
+    rocket_data_path = _session_output_dir() / "rocket_data.json"
+    if not rocket_data_path.exists():
         return jsonify({
             "exists": False,
             "message": (
@@ -1904,7 +2048,7 @@ def trajectory_rocket_structure():
             ),
         }), 404
     try:
-        with open(_TRAJ_ROCKET_DATA) as f:
+        with open(rocket_data_path) as f:
             data = json.load(f)
         if not isinstance(data, dict) or not data:
             raise ValueError("rocket_data.json is empty or not a dict")
@@ -2021,14 +2165,28 @@ def trajectory_run():
     `_validate_and_collect()` produces — gets written to `_current.json`).
 
     Returns: `{ run_id, status: 'running' }`.
+    409 if this session already has a simulation running — a second run
+    would overwrite the first one's config and output files mid-flight.
     """
     payload = request.get_json(silent=True) or {}
+    sid = _current_sid()
+
+    _prune_finished_runs(_active_runs, _runs_lock)
+    existing = _session_has_running(_active_runs, _runs_lock, sid)
+    if existing:
+        return jsonify({
+            "error": (
+                "A simulation is already running in this session. "
+                "Wait for it to finish or cancel it first."
+            ),
+            "run_id": existing,
+        }), 409
 
     # Write the config to the session's `current.json` (was the
     # repo's `_current.json`). The simulation reads it as its first
     # argument; this isolates one coworker's in-progress params from
     # another's.
-    config_path = _session_current_json()
+    config_path = _session_current_json(sid)
     try:
         with open(config_path, "w") as f:
             json.dump(payload, f, indent=2)
@@ -2045,8 +2203,9 @@ def trajectory_run():
     env["PYTHONUNBUFFERED"] = "1"
     # Tell the simulation where to write `simulation_output.csv` —
     # the session-private output dir, not the legacy `../output/`.
-    # simulation.py honours this env var (see its CSV-export block).
-    env["CC_OUTPUT_DIR"] = str(_session_output_dir())
+    # simulation.py honours this env var (see its CSV-export block),
+    # and generate_sketch.py writes rocket_data.json there too.
+    env["CC_OUTPUT_DIR"] = str(_session_output_dir(sid))
 
     try:
         proc = subprocess.Popen(
@@ -2064,6 +2223,7 @@ def trajectory_run():
     with _runs_lock:
         _active_runs[run_id] = {
             "proc":         proc,
+            "sid":          sid,   # owner — poll/cancel verify against it
             "status":       "running",
             "progress":     0.0,
             "phase":        _PHASE_LABELS[0],
@@ -2088,9 +2248,12 @@ def trajectory_run_status(run_id: str):
     Returns `{ run_id, status, progress, phase, elapsed_s, error_msg, recent_log }`.
     `status` is one of: `running`, `success`, `failed`, `cancelled`.
     """
+    sid = _current_sid()
     with _runs_lock:
         run = _active_runs.get(run_id)
-        if not run:
+        # A run belongs to the session that started it — respond 404
+        # (not 403) for other sessions so run ids aren't confirmable.
+        if not run or run.get("sid") != sid:
             return jsonify({"error": "run not found", "run_id": run_id}), 404
         if run["status"] == "running":
             run["elapsed_s"] = time.perf_counter() - run["start_time"]
@@ -2111,13 +2274,15 @@ def trajectory_run_status(run_id: str):
 def trajectory_run_cancel(run_id: str):
     """Cancel a running simulation. Sends SIGTERM, then SIGKILL after a grace
     period if the process hasn't exited."""
+    sid = _current_sid()
     with _runs_lock:
         run = _active_runs.get(run_id)
-        if not run:
+        if not run or run.get("sid") != sid:
             return jsonify({"error": "run not found"}), 404
         if run["status"] != "running":
             return jsonify({"status": run["status"]})  # nothing to cancel
         run["status"] = "cancelled"
+        run["finished_at"] = time.time()
         proc = run["proc"]
 
     try:
@@ -2369,6 +2534,8 @@ def _read_debris_subprocess(run_id: str):
             return
         run["elapsed_s"] = time.perf_counter() - run["start_time"]
         run["log_lines"] = list(log_lines[-60:])
+        run["finished_at"] = time.time()
+        run["proc"] = None          # free the Popen/pipe handles
         if run["status"] == "cancelled":
             return
 
@@ -2421,8 +2588,20 @@ def debris_run():
     payload = request.get_json(silent=True) or {}
     mode = (payload.get("mode") or "interval").lower()
     params = payload.get("params") or {}
+    sid = _current_sid()
 
-    sim_csv = _session_output_dir() / "simulation_output.csv"
+    _prune_finished_runs(_active_debris_runs, _debris_runs_lock)
+    existing = _session_has_running(_active_debris_runs, _debris_runs_lock, sid)
+    if existing:
+        return jsonify({
+            "error": (
+                "A debris analysis is already running in this session. "
+                "Wait for it to finish or cancel it first."
+            ),
+            "run_id": existing,
+        }), 409
+
+    sim_csv = _session_output_dir(sid) / "simulation_output.csv"
     if not sim_csv.exists():
         return jsonify({
             "error": "no simulation output yet — run a trajectory simulation first",
@@ -2430,7 +2609,7 @@ def debris_run():
 
     # Per-session debris input dir — keeps two coworkers' debris configs
     # from clobbering each other if they run analyses concurrently.
-    debris_dir = _session_root() / "json_debris"
+    debris_dir = _session_root(sid) / "json_debris"
     debris_dir.mkdir(parents=True, exist_ok=True)
     csv_path    = debris_dir / "gui_debris_trajectory.csv"
     config_path = debris_dir / "gui_debris_config.json"
@@ -2468,17 +2647,19 @@ def debris_run():
         return jsonify({"error": f"run_csv.py not found: {run_script}"}), 500
 
     src_dir = str(_TRAJ_ROOT / "src")
-    debris_data_dir = _session_debris_dir()
+    debris_data_dir = _session_debris_dir(sid)
     debris_data_dir.mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = src_dir + os.pathsep + existing if existing else src_dir
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        src_dir + os.pathsep + existing_pp if existing_pp else src_dir
+    )
     # Tell debris_calculation/run_csv.py where to find the source
     # simulation_output.csv (session-private) instead of the legacy
     # in-repo `../output/` location.
-    env["CC_OUTPUT_DIR"] = str(_session_output_dir())
+    env["CC_OUTPUT_DIR"] = str(_session_output_dir(sid))
 
     try:
         proc = subprocess.Popen(
@@ -2496,6 +2677,7 @@ def debris_run():
     with _debris_runs_lock:
         _active_debris_runs[run_id] = {
             "proc":            proc,
+            "sid":             sid,   # owner — poll/cancel verify against it
             "status":          "running",
             "progress":        0.0,
             "phase":           _DEBRIS_PHASE_LABELS[0],
@@ -2524,9 +2706,10 @@ def debris_run():
 @app.get("/api/debris/run/<run_id>")
 def debris_run_status(run_id: str):
     """Poll a debris run's current state."""
+    sid = _current_sid()
     with _debris_runs_lock:
         run = _active_debris_runs.get(run_id)
-        if not run:
+        if not run or run.get("sid") != sid:
             return jsonify({"error": "run not found", "run_id": run_id}), 404
         if run["status"] == "running":
             run["elapsed_s"] = time.perf_counter() - run["start_time"]
@@ -2546,13 +2729,15 @@ def debris_run_status(run_id: str):
 @app.post("/api/debris/run/<run_id>/cancel")
 def debris_run_cancel(run_id: str):
     """Cancel a running debris analysis."""
+    sid = _current_sid()
     with _debris_runs_lock:
         run = _active_debris_runs.get(run_id)
-        if not run:
+        if not run or run.get("sid") != sid:
             return jsonify({"error": "run not found"}), 404
         if run["status"] != "running":
             return jsonify({"status": run["status"]})
         run["status"] = "cancelled"
+        run["finished_at"] = time.time()
         run["_stop_ticker"] = True
         proc = run["proc"]
 
@@ -2767,21 +2952,40 @@ def _safe_float(v):
 #     pandas → openpyxl workbook on the fly.
 # ---------------------------------------------------------------------------
 
-_TRAJ_RAW_CACHE: dict = {"mtime": 0.0, "df": None}
+# Per-session cache of the parsed simulation_output.csv. Keyed by session
+# id so two coworkers can never be served each other's trajectory data,
+# and guarded by a lock because gunicorn runs multiple request threads.
+# Bounded to a handful of sessions to keep memory in check on the 2 GB
+# production instance — least-recently-used sessions are evicted.
+_TRAJ_RAW_CACHE: dict[str, dict] = {}
+_TRAJ_RAW_CACHE_LOCK = threading.Lock()
+_TRAJ_RAW_CACHE_MAX_SESSIONS = 3
 _TRAJ_RAW_LIMIT_MAX = 25000   # hard cap so a buggy client can't OOM us
 _TRAJ_RAW_LIMIT_DEFAULT = 5000
 
 
-def _load_full_trajectory_df():
-    """Return the full simulation_output.csv as a pandas DataFrame, cached
-    in process memory and invalidated when the file's mtime changes.
+def _invalidate_raw_cache(sid: str) -> None:
+    """Drop one session's cached DataFrame (call after its CSV changes)."""
+    with _TRAJ_RAW_CACHE_LOCK:
+        _TRAJ_RAW_CACHE.pop(sid, None)
+
+
+def _load_full_trajectory_df(sid: str | None = None):
+    """Return one session's full simulation_output.csv as a pandas
+    DataFrame, cached in process memory per session id and invalidated
+    when the file's mtime changes.
+
+    Background threads (which have no Flask request context) must pass
+    `sid` explicitly; request handlers can omit it.
 
     Uses the pyarrow CSV engine when it's available — typically 3-5×
     faster than the default Python parser for large files, which makes
     the *first* /raw chunk request after a sim feel snappy. Falls back
     silently if pyarrow isn't installed.
     """
-    csv_path = _session_output_dir() / "simulation_output.csv"
+    if sid is None:
+        sid = _current_sid()
+    csv_path = _session_output_dir(sid) / "simulation_output.csv"
     if not csv_path.exists():
         return None
     try:
@@ -2789,8 +2993,11 @@ def _load_full_trajectory_df():
     except OSError:
         return None
 
-    if _TRAJ_RAW_CACHE.get("df") is not None and _TRAJ_RAW_CACHE["mtime"] == mtime:
-        return _TRAJ_RAW_CACHE["df"]
+    with _TRAJ_RAW_CACHE_LOCK:
+        entry = _TRAJ_RAW_CACHE.get(sid)
+        if entry is not None and entry["mtime"] == mtime:
+            entry["used"] = time.time()
+            return entry["df"]
 
     try:
         import pandas as pd
@@ -2802,7 +3009,7 @@ def _load_full_trajectory_df():
     df = None
     try:
         df = pd.read_csv(csv_path, engine="pyarrow")
-    except (ImportError, ValueError, Exception):
+    except Exception:
         try:
             df = pd.read_csv(csv_path, low_memory=False)
         except Exception:
@@ -2810,8 +3017,17 @@ def _load_full_trajectory_df():
     if df is None:
         return None
 
-    _TRAJ_RAW_CACHE["mtime"] = mtime
-    _TRAJ_RAW_CACHE["df"] = df
+    with _TRAJ_RAW_CACHE_LOCK:
+        _TRAJ_RAW_CACHE[sid] = {
+            "mtime": mtime,
+            "df": df,
+            "used": time.time(),
+        }
+        while len(_TRAJ_RAW_CACHE) > _TRAJ_RAW_CACHE_MAX_SESSIONS:
+            oldest = min(
+                _TRAJ_RAW_CACHE, key=lambda k: _TRAJ_RAW_CACHE[k]["used"]
+            )
+            del _TRAJ_RAW_CACHE[oldest]
     return df
 
 
@@ -2836,7 +3052,6 @@ def trajectory_output_raw():
         return jsonify({
             "exists": False,
             "message": "No simulation output yet. Run a trajectory simulation first.",
-            "path": str(csv_path),
         })
 
     try:
@@ -2923,7 +3138,6 @@ def trajectory_output_raw_all():
         return jsonify({
             "exists": False,
             "message": "No simulation output yet. Run a trajectory simulation first.",
-            "path": str(csv_path),
         })
 
     df = _load_full_trajectory_df()
@@ -2946,6 +3160,21 @@ def trajectory_output_raw_all():
             "computed": bool(meta.get("computed", False)),
         }
 
+    # Hard cap: refuse datasets whose float64 buffer would exceed
+    # ~200 MB. Serving one of those costs the 2 GB production instance
+    # a large fraction of its RAM per request — two concurrent clicks
+    # could OOM the server. The CSV download stays available for
+    # arbitrarily large runs.
+    _RAW_ALL_MAX_CELLS = 25_000_000          # × 8 bytes = 200 MB
+    if len(df) * len(cols) > _RAW_ALL_MAX_CELLS:
+        return jsonify({
+            "error": (
+                "This run is too large for the in-browser grid "
+                f"({len(df):,} rows × {len(cols)} columns). "
+                "Use Download → CSV instead."
+            ),
+        }), 413
+
     arr = df[cols].to_numpy(dtype=np.float64, copy=False)
     # Replace +/- Inf with NaN — JS Float64Array preserves NaN naturally.
     arr = np.where(np.isfinite(arr), arr, np.nan)
@@ -2954,13 +3183,21 @@ def trajectory_output_raw_all():
     rows, cols_count = arr.shape
     cols_header = json.dumps({"names": cols, "meta": columns_meta})
 
+    # Stream the buffer in row-chunks instead of materialising one
+    # giant bytes object with arr.tobytes() — that copy would briefly
+    # double the request's memory footprint.
+    def _chunks(a, rows_per_chunk=50_000):
+        for i in range(0, a.shape[0], rows_per_chunk):
+            yield a[i : i + rows_per_chunk].tobytes()
+
     return Response(
-        arr.tobytes(),
+        _chunks(arr),
         mimetype="application/octet-stream",
         headers={
             "X-Cc-Rows":    str(rows),
             "X-Cc-Cols":    str(cols_count),
             "X-Cc-Columns": cols_header,
+            "Content-Length": str(rows * cols_count * 8),
             # Allow the X-Cc-* headers to be read by JS clients (they're
             # not in the CORS-safe-listed set).
             "Access-Control-Expose-Headers":
@@ -3243,12 +3480,19 @@ def debris_output_zip(run_id: str):
     if run_dir is None:
         return jsonify({"error": "run not found", "run_id": run_id}), 404
 
-    import io
+    import tempfile
     import zipfile
 
-    buf = io.BytesIO()
+    # Build the archive in a temp file on disk, not a BytesIO — debris
+    # runs can be hundreds of MB, and holding the whole ZIP in RAM per
+    # request is how a 2 GB instance falls over. The file is unlinked
+    # immediately after opening (POSIX), so the OS reclaims it as soon
+    # as the response finishes streaming, even on error.
+    tmp = tempfile.NamedTemporaryFile(
+        prefix="cc-debris-zip-", suffix=".zip", delete=False
+    )
     try:
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in run_dir.rglob("*"):
                 if not path.is_file():
                     continue
@@ -3257,12 +3501,27 @@ def debris_output_zip(run_id: str):
                     continue
                 arcname = path.relative_to(run_dir).as_posix()
                 zf.write(path, arcname)
+        tmp.flush()
+        stream = open(tmp.name, "rb")
     except OSError as exc:
+        tmp.close()
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
         return jsonify({"error": f"failed to build zip: {exc}"}), 500
+    finally:
+        tmp.close()
 
-    buf.seek(0)
+    # Safe on POSIX: the open handle keeps the data readable while the
+    # directory entry is already gone.
+    try:
+        os.unlink(tmp.name)
+    except OSError:
+        pass
+
     return send_file(
-        buf,
+        stream,
         mimetype="application/zip",
         as_attachment=True,
         download_name=f"{run_id}.zip",
@@ -3294,38 +3553,16 @@ def engine_test_video(name: str, file_name: str):
 
 @app.get("/")
 def index():
-    return jsonify(
-        {
-            "name": "clearcut-backend",
-            "endpoints": [
-                "/api/ping",
-                "/api/pbs/defaults",
-                "/api/pbs/calculate",
-                "/api/engine/tests",
-                "/api/engine/tests/<name>",
-                "/api/engine/tests/<name>/tdms/<file>",
-                "/api/engine/tests/<name>/video/<file>",
-                "/api/trajectory/output",
-                "/api/trajectory/output/raw?offset=N&limit=M",
-                "/api/trajectory/output/raw/all",
-                "/api/trajectory/output/download?format=csv|xlsx",
-                "/api/trajectory/run",
-                "/api/trajectory/run/<run_id>",
-                "/api/trajectory/run/<run_id>/cancel",
-                "/api/debris/presets",
-                "/api/debris/run",
-                "/api/debris/run/<run_id>",
-                "/api/debris/run/<run_id>/cancel",
-                "/api/debris/output",
-                "/api/debris/output/<run_id>",
-                "/api/debris/output/<run_id>/tree",
-                "/api/debris/output/<run_id>/file?path=<rel>",
-                "/api/debris/output/<run_id>/zip",
-            ],
-        }
-    )
+    # Deliberately minimal — the API surface is documented in the repo,
+    # not advertised to anonymous visitors.
+    return jsonify({"name": "clearcut-backend"})
 
 
 if __name__ == "__main__":
+    # Local dev entry point only — production runs under gunicorn (see
+    # render.yaml). Binds to loopback so the debug server is never
+    # reachable from the network; set FLASK_DEBUG=0 to disable the
+    # debugger/reloader if you need to.
     port = int(os.environ.get("PORT", "5001"))
-    app.run(host="127.0.0.1", port=port, debug=True)
+    debug = os.environ.get("FLASK_DEBUG", "1").strip() == "1"
+    app.run(host="127.0.0.1", port=port, debug=debug)

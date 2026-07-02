@@ -2,7 +2,24 @@ import json
 from typing import Dict, List, Union, Optional
 
 import numpy as np
-from functions.Optimal_OF_Ratio import Optimal_OF_Ratio
+
+# ─────────────────────────────────────────────────────────────────────
+# PROPULSION MODEL NOTE — fixed-point CEA data
+#
+# Engine performance (exit pressure, exit velocity, C*) is taken from
+# PRECOMPUTED NASA-CEA results for the reference Jet-A(L)/HTP90 engines
+# at their design chamber pressures — the constants assigned per stage
+# below. Live CEA evaluation is disabled (the original integration
+# relied on a Windows-only FCEA2m.exe); the commented Rocket_CEA calls
+# mark where it would plug back in.
+#
+# Practical consequence: mass flow rate, throat/exit areas, and thrust
+# all respond to propellant mass, burn time, engine count and chamber
+# pressure — but changing fuel/oxidizer TYPE does not recompute the
+# combustion values. The O/F "optimizer" that used to run here was a
+# stub evaluating a constant (it always returned 2.0) and has been
+# removed.
+# ─────────────────────────────────────────────────────────────────────
 
 
 class Stage:
@@ -105,8 +122,7 @@ class Stage:
             self.payload_ratio = self.payload_mass / (self.propellant_mass + self.structural_mass)
             self.total_mass_payload_included = self.propellant_mass + self.structural_mass + self.payload_mass
             self.mass_flow_rate_per_engine = (self.propellant_mass / self.stage_burn_time) / self.number_of_engines
-            self.OF_ratio_Optimal = Optimal_OF_Ratio(self.desired_operating_pressure, self.area_ratio,
-                                                     self.fuel_type, self.oxidizer_type)
+            self.OF_ratio_Optimal = None  # see propulsion model note at top of file
 
             """
             ------------------------------------------------------------
@@ -164,8 +180,7 @@ class Stage:
 
             self.mass_flow_rate_per_engine = (self.propellant_mass / self.stage_burn_time) / self.number_of_engines
 
-            self.OF_ratio_Optimal = Optimal_OF_Ratio(self.desired_operating_pressure, self.area_ratio,
-                                                     self.fuel_type, self.oxidizer_type)
+            self.OF_ratio_Optimal = None  # see propulsion model note at top of file
 
             self.exit_pressure_th, self.exit_velocity_th, self.C_star_th = 0.1565, 2.9852e03, 1657.7
             # self.exit_pressure_th, self.exit_velocity_th, self.C_star_th = Rocket_CEA(
@@ -219,8 +234,7 @@ class Stage:
             self.total_mass_payload_included = self.propellant_mass + self.structural_mass + self.payload_mass
 
             self.mass_flow_rate_per_engine = (self.propellant_mass / self.stage_burn_time) / self.number_of_engines
-            self.OF_ratio_Optimal = Optimal_OF_Ratio(self.desired_operating_pressure, self.area_ratio,
-                                                     self.fuel_type, self.oxidizer_type)
+            self.OF_ratio_Optimal = None  # see propulsion model note at top of file
 
             self.exit_pressure_th, self.exit_velocity_th, self.C_star_th = 0.3899, 2.8487e03, 1657.7
             # self.exit_pressure_th, self.exit_velocity_th, self.C_star_th = Rocket_CEA(
@@ -280,7 +294,7 @@ class Stage:
             f"{'Structural Mass':35s}: {self.structural_mass:.2f} kg\n"
             f"{'Total Mass (Payload Included)':35s}: {self.total_mass_payload_included:.2f} kg\n"
             f"{'Mass Flow Rate per Engine':35s}: {self.mass_flow_rate_per_engine:.2f} kg/s\n"
-            f"{'Optimal O/F Ratio':35s}: {self.OF_ratio_Optimal:.3f}\n"
+            f"{'Propulsion model':35s}: fixed-point CEA data (see note at top of stage.py)\n"
             f"{'Exit Pressure (Throat)':35s}: {self.exit_pressure_th:.3f} bar\n"
             f"{'Exit Velocity (Throat)':35s}: {self.exit_velocity_th:.2f} m/s\n"
             f"{'Characteristic Velocity (C* th)':35s}: {self.C_star_th:.2f} m/s\n"

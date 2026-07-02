@@ -27,6 +27,11 @@ export function ParamEntry({
   tip = '',
   placeholder = '',
   type = 'text',
+  // Nearly every ParamEntry is a number — 'decimal' brings up the
+  // numeric keyboard on touch devices while keeping free-form string
+  // state (unlike type="number"). Pass inputMode="text" for the rare
+  // genuinely-textual field.
+  inputMode = 'decimal',
   error = false,
   disabled = false,
 }) {
@@ -41,6 +46,7 @@ export function ParamEntry({
             error ? 'Param-input--error' : '',
           ].filter(Boolean).join(' ')}
           type={type}
+          inputMode={inputMode}
           value={value ?? ''}
           placeholder={placeholder}
           disabled={disabled}

@@ -1,10 +1,21 @@
-Flask>=3.0,<4.0
-flask-cors>=4.0,<6.0
-gunicorn>=21.2
-bcrypt>=4.0
-boto3>=1.34
+# Web/auth layer dependencies. Versions use compatible-release pins
+# (~=) so a redeploy can't silently jump a major version — bump these
+# deliberately, run the test suite (backend/tests/), then commit.
+#
+# The scientific stack (pandas, numpy, scipy, ...) lives in
+# physics_engines/core/requirements.txt.
+Flask~=3.1
+flask-cors~=5.0
+# Explicit even though Flask pulls them in — app.py imports both
+# directly, so their versions should be under our control, not
+# resolved transitively.
+Werkzeug~=3.1
+itsdangerous~=2.2
+gunicorn~=23.0
+bcrypt~=5.0
+boto3~=1.40
 numpy>=1.24
-nptdms>=1.9
+nptdms~=1.10
 # pyatmos (used by the trajectory simulation's COESA76 atmosphere model)
 # still imports `pkg_resources`. setuptools shipped pkg_resources for
 # years, but officially removed it in v80 (April 2025). Pin <80 so the

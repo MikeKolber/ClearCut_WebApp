@@ -59,12 +59,14 @@ function Login() {
 
   return (
     <div className="Login-root">
-      <form className="Login-form" onSubmit={onSubmit} autoComplete="off">
+      <form className="Login-form" onSubmit={onSubmit}>
         <input
           className="Login-input"
           type="text"
-          name="u"
+          name="username"
           placeholder="username"
+          aria-label="Username"
+          autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoCapitalize="off"
@@ -76,8 +78,10 @@ function Login() {
         <input
           className="Login-input"
           type="password"
-          name="p"
+          name="password"
           placeholder="password"
+          aria-label="Password"
+          autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required

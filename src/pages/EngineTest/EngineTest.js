@@ -4,6 +4,7 @@ import TopBar from '../../components/TopBar/TopBar';
 import { listEngineTests, getEngineTest } from '../../services/api';
 import ErrorToast, { StuckRocket } from '../../components/ErrorToast/ErrorToast';
 import './EngineTest.css';
+import { formatSize } from '../../utils/format';
 
 /**
  * Mirror of et_pages/page.py — pick a test folder, then a tool.
@@ -102,6 +103,7 @@ function EngineTest() {
                   key={t.name}
                   type="button"
                   className={`ET-listItem${t.name === selected ? ' ET-listItem--active' : ''}`}
+                  aria-current={t.name === selected ? 'true' : undefined}
                   onClick={() => setSelected(t.name)}
                   title={t.name}
                 >
@@ -131,7 +133,11 @@ function EngineTest() {
                 navigate(`/engine-test/video?test=${encodeURIComponent(selected)}`)
               }
             />
-          ) : null}
+          ) : (
+            /* Fetch failed — the toast explains why; this keeps the
+               pane from being silently blank with no recovery hint. */
+            <Placeholder text="Could not load this test — pick it again to retry." />
+          )}
         </section>
       </div>
 
@@ -228,14 +234,7 @@ function FileList({ label, files, emptyHint }) {
 
 /* ─── helpers ──────────────────────────────────────────────────── */
 
-const KB = 1024, MB = KB * 1024, GB = MB * 1024;
-function formatSize(b) {
-  if (typeof b !== 'number' || !Number.isFinite(b)) return '—';
-  if (b >= GB) return `${(b / GB).toFixed(1)} GB`;
-  if (b >= MB) return `${(b / MB).toFixed(1)} MB`;
-  if (b >= KB) return `${(b / KB).toFixed(0)} KB`;
-  return `${b} B`;
-}
+// formatSize moved to src/utils/format.js (shared).
 
 function ListMessage({ text }) {
   return <div className="ET-listMessage mono">{text}</div>;

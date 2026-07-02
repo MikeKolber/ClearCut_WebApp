@@ -3,6 +3,8 @@
  * gui/PBS/pages/page.py::_results_to_text and ::_results_to_csv.
  */
 
+import { downloadBlob } from '../../utils/download';
+
 const fmtKg = (v) => {
   if (typeof v === 'number' && Number.isFinite(v)) {
     return `${v.toLocaleString(undefined, {
@@ -154,16 +156,8 @@ export function resultsToCsv(results) {
   return rows.map((r) => r.map(csvEscape).join(',')).join('\n');
 }
 
+// Thin wrapper over the shared blob-download helper — keeps the
+// text-content signature the PBS callers already use.
 export function downloadFile(filename, content, mime = 'text/plain;charset=utf-8') {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-    a.remove();
-  }, 0);
+  downloadBlob(new Blob([content], { type: mime }), filename);
 }

@@ -8,6 +8,7 @@ import { compareFilesList, compareFileData } from '../../services/api';
 import { TIPS } from './paths';
 import Tooltip from '../../components/Tooltip/Tooltip';
 import './ComparePage.css';
+import { PLOT_COLORS } from '../../constants/plotColors';
 
 /* ═══ Compare page ═══════════════════════════════════════════════
  *
@@ -38,11 +39,7 @@ import './ComparePage.css';
 const Plot = createPlotlyComponent(Plotly);
 
 // Same palette as TdmsAnalyzer for consistency across the app.
-const PLOT_COLORS = [
-  '#4DA8DA', '#E06070', '#4ADE9A', '#E8AB2D', '#A78BFA',
-  '#F0825C', '#34D399', '#C084FC', '#60A5FA', '#FBBF24',
-  '#F87171', '#22D3EE', '#A855F7', '#84CC16', '#FB923C',
-];
+// Shared palette — see src/constants/plotColors.js.
 // X-axis defaults to whichever of these we find first in the data.
 const X_AXIS_CANDIDATES = ['time_s', 'time', 't', 'sim_time'];
 
@@ -384,10 +381,10 @@ function ComparePage() {
             </header>
             <div className="CMP-rows">
               {files == null && (
-                <span className="CMP-empty mono">// loading…</span>
+                <span className="CMP-empty mono">{'// loading…'}</span>
               )}
               {files != null && files.length === 0 && (
-                <span className="CMP-empty mono">// none found</span>
+                <span className="CMP-empty mono">{'// none found'}</span>
               )}
               {files?.map((f) => {
                 const checked = activeFiles.has(f.filename);
@@ -445,7 +442,7 @@ function ComparePage() {
             </header>
             <div className="CMP-rows CMP-rows--scroll">
               {availableChannels.length === 0 && (
-                <span className="CMP-empty mono">// load a file</span>
+                <span className="CMP-empty mono">{'// load a file'}</span>
               )}
               {availableChannels.map((c) => {
                 const checked = activeChannels.has(c.name);

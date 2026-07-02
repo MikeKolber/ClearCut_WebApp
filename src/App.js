@@ -38,24 +38,43 @@ const isValidSavedPath = (p) =>
   VALID_PATH_PREFIXES.some((root) => p === root || p.startsWith(`${root}/`) || p.startsWith(`${root}?`));
 
 /* ─────────────────────────────────────────────────────────────────
-   ProtectedRoute — calls /api/auth/whoami once on mount. While the
-   check is in flight we render nothing (a black div) so the
-   protected UI never flashes for an unauthenticated user. On 401 we
-   bounce to /login; the login page always sends the user to the
-   Landing page on success (no deep-link follow-through).
+   ProtectedRoute — verifies the session via /api/auth/whoami. The
+   verified flag is cached at module scope so navigating between
+   pages doesn't refire the check on every mount — any later 401
+   dispatches `cc:auth-expired`, which resets the flag and bounces
+   to /login. On slow checks (cold backend) a quiet branded splash
+   appears after 300 ms instead of an unexplained black screen.
    ───────────────────────────────────────────────────────────────── */
+let _authVerified = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener('cc:auth-expired', () => { _authVerified = false; });
+}
+
 function ProtectedRoute({ children }) {
   const navigate = useNavigate();
   // 'checking' | 'authed' | 'unauthed'
-  const [state, setState] = useState('checking');
+  const [state, setState] = useState(_authVerified ? 'authed' : 'checking');
+  const [showSplash, setShowSplash] = useState(false);
 
   useEffect(() => {
+    if (_authVerified) return undefined;
     let cancelled = false;
     whoami()
-      .then(() => { if (!cancelled) setState('authed'); })
+      .then(() => {
+        _authVerified = true;
+        if (!cancelled) setState('authed');
+      })
       .catch(() => { if (!cancelled) setState('unauthed'); });
     return () => { cancelled = true; };
   }, []);
+
+  // Only surface the splash when the check is genuinely slow — a
+  // sub-300ms check stays a plain black frame, no flash of UI.
+  useEffect(() => {
+    if (state !== 'checking') return undefined;
+    const t = setTimeout(() => setShowSplash(true), 300);
+    return () => clearTimeout(t);
+  }, [state]);
 
   useEffect(() => {
     if (state !== 'unauthed') return;
@@ -63,17 +82,14 @@ function ProtectedRoute({ children }) {
   }, [state, navigate]);
 
   if (state !== 'authed') {
-    /* Solid black panel while checking / redirecting. Matches the
-       login page so transitions don't strobe. */
     return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          background: '#000',
-          zIndex: 9998,
-        }}
-      />
+      <div className="App-authGate">
+        {showSplash && state === 'checking' && (
+          <span className="App-authGate-text mono">
+            Verifying session…
+          </span>
+        )}
+      </div>
     );
   }
   return children;

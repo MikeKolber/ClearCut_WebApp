@@ -64,6 +64,31 @@ json_file_path = _sys.argv[1] if len(_sys.argv) > 1 else "../json_files/_current
 with open(json_file_path, "r") as f:
     config = json.load(f)
 
+# Validate the config up front so a missing field produces one clear
+# error line (which the web backend surfaces directly in the UI)
+# instead of a bare KeyError traceback somewhere mid-file.
+_REQUIRED_CONFIG_KEYS = (
+    "simulation_time",
+    "lat_launch", "lon_launch", "height_launch", "initial_role",
+    "initial_speed", "initial_path_angle",
+    "desired_inclination", "desired_orbit_height",
+    "free_fall_timing", "pull_up_time", "pitch_command_delay_time",
+    "coasting_s1_s2", "stage_2_timing", "coasting_s2_s3",
+    "stage_3_timing_total_burn", "stage_3_timing_burn_1",
+    "stage_3_timing_coast", "no_of_stages",
+    "final_payload_mass", "fairing_mass", "fairing_release_conditions",
+    "rocket_diameter_cd", "rocket_diameter_cl",
+    "Stage1", "Stage2", "Stage3",
+)
+_missing_keys = [k for k in _REQUIRED_CONFIG_KEYS if k not in config]
+if _missing_keys:
+    print(
+        "ERROR: simulation config is missing required parameter(s): "
+        + ", ".join(_missing_keys),
+        file=_sys.stderr, flush=True,
+    )
+    _sys.exit(1)
+
 aerodynamic = Aerodynamic()
 atmosphere = COESA76()
 
@@ -72,7 +97,6 @@ atmosphere = COESA76()
 lat_launch = config["lat_launch"]
 lon_launch = config["lon_launch"]
 height_launch = config["height_launch"]
-initial_launch_azimuth_with_rotation = config["initial_launch_azimuth_with_rotation"]
 initial_role = config["initial_role"]
 
 # ----- Initial Conditions -----
@@ -130,15 +154,30 @@ if desired_inclination < lat_launch:
 r_0_ecef = coord_transform.lla_2_ecef(lat_launch, lon_launch, height_launch)
 lat_lon_h_vector = np.array([lat_launch, lon_launch, height_launch])
 
-# Calculation for Launch Azimuth
-initial_launch_azimuth_with_rotation = coord_transform.calculate_launch_azimuth(
-    desired_inclination,
-    lat_launch,
-    desired_orbit_height,
-    mu,
-    omega_earth,
-    wgs84_mean_radius
+# Launch azimuth: honour the value the user supplied in the config.
+# Auto-compute from the target orbit only when the field is empty /
+# null / "auto". (Previously the user's input was read and then
+# unconditionally overwritten by the computed value, so the form
+# field silently did nothing.)
+_azimuth_cfg = config.get("initial_launch_azimuth_with_rotation")
+_azimuth_is_auto = _azimuth_cfg is None or (
+    isinstance(_azimuth_cfg, str) and _azimuth_cfg.strip().lower() in ("", "auto")
 )
+if _azimuth_is_auto:
+    initial_launch_azimuth_with_rotation = coord_transform.calculate_launch_azimuth(
+        desired_inclination,
+        lat_launch,
+        lon_launch,
+        height_launch,
+        desired_orbit_height,
+        mu,
+        omega_earth,
+        wgs84_mean_radius
+    )
+    print(f"Launch azimuth auto-computed: "
+          f"{initial_launch_azimuth_with_rotation:.2f} deg")
+else:
+    initial_launch_azimuth_with_rotation = float(_azimuth_cfg)
 
 yaw_pitch_roll_controls_initial = [initial_launch_azimuth_with_rotation, initial_path_angle, initial_role]
 
@@ -726,9 +765,18 @@ propellant_mass_history = propellant_mass_history[:actual_steps]
 t1 = time.perf_counter()
 section_times["array_trimming"] += (t1 - t0)
 
-# Export MOI and COM data to CSV
+# Export MOI and COM data to CSV.
+# In web mode (CC_OUTPUT_DIR set by the backend) this goes into the
+# session's private workspace — writing into the shared repo tree would
+# let two concurrent users clobber each other's data. The desktop flow
+# keeps the legacy in-repo path.
 import os
-aero_data_path = 'TVC Calculation/Data_for_TVC/aero_data.csv'
+_output_override = os.environ.get('CC_OUTPUT_DIR')
+if _output_override:
+    aero_data_path = Path(_output_override) / 'aero_data.csv'
+else:
+    aero_data_path = Path('TVC Calculation/Data_for_TVC/aero_data.csv')
+aero_data_path.parent.mkdir(parents=True, exist_ok=True)
 moi_com_df = pd.DataFrame({
     'time_s': time_history,
     'I_xx': I_xx_moi,
@@ -820,8 +868,7 @@ simulation_df = pd.DataFrame({
 # CC_OUTPUT_DIR (set by the web backend, points at the calling user's
 # per-session workspace) directs the CSV there. Falls back to the
 # legacy relative path when running the script directly from a shell.
-# `os` was already imported above the aero_data section.
-_output_override = os.environ.get('CC_OUTPUT_DIR')
+# `_output_override` was resolved above the aero_data export.
 if _output_override:
     simulation_output_path = Path(_output_override) / 'simulation_output.csv'
 else:
@@ -830,9 +877,16 @@ simulation_output_path.parent.mkdir(parents=True, exist_ok=True)
 simulation_df.to_csv(str(simulation_output_path), index=False)
 print(f"\n{Fore.GREEN}Exported simulation data to {simulation_output_path}{Style.RESET_ALL}")
 
-# Generate rocket structure sketch
-from sketch.generate_sketch import generate_sketch
-generate_sketch(static_data_for_moment_of_inertia)
+# Generate rocket structure sketch (writes rocket_data.json + png/pdf
+# into CC_OUTPUT_DIR in web mode). A drawing failure must never fail
+# the run — the CSV above is already written, which is what the run
+# exists to produce. The 3D viewer just reports "no structure data".
+try:
+    from sketch.generate_sketch import generate_sketch
+    generate_sketch(static_data_for_moment_of_inertia)
+except Exception as _sketch_exc:  # noqa: BLE001 — best-effort side artefact
+    print(f"WARNING: rocket sketch generation failed ({_sketch_exc}); "
+          f"continuing — simulation output is already saved.")
 
 t1 = time.perf_counter()
 section_times["data_processing"] += (t1 - t0)

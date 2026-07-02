@@ -29,12 +29,22 @@ function notifyAuthExpired() {
 }
 
 export async function request(path, options = {}) {
+  /* CSRF guard — the backend rejects mutating requests without this
+     custom header, since cross-site form posts can't set it. Only sent
+     on mutations so plain GETs stay preflight-free cross-origin. */
+  const method = (options.method || 'GET').toUpperCase();
+  const csrfHeader = method === 'GET' ? {} : { 'X-CC-Request': '1' };
+
   const res = await fetch(`${API_BASE}${path}`, {
     /* `include` so the signed-session cookie travels even when
        REACT_APP_API_BASE points at a different origin. In the standard
        same-origin / CRA-proxy setup this is a no-op. */
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...csrfHeader,
+      ...(options.headers || {}),
+    },
     ...options,
   });
 
@@ -290,6 +300,7 @@ export async function loadSimulationFile(file) {
   const res = await fetch(`${API_BASE}/api/trajectory/load`, {
     method: 'POST',
     credentials: 'include',
+    headers: { 'X-CC-Request': '1' },
     body: fd,
   });
   if (!res.ok) {

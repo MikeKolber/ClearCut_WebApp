@@ -237,11 +237,11 @@ function LoadSimulationModal({ onClose, onLoaded, onBrowseDisk }) {
 
         <div className="DFM-body LDM-body">
           {!selectMode && (
-            <p className="LSM-section-eyebrow mono">// Saved on this machine</p>
+            <p className="LSM-section-eyebrow mono">{'// Saved on this machine'}</p>
           )}
 
           {loading && (
-            <div className="LDM-empty mono">// loading saved simulations…</div>
+            <div className="LDM-empty mono">{'// loading saved simulations…'}</div>
           )}
 
           {error && (
@@ -250,7 +250,7 @@ function LoadSimulationModal({ onClose, onLoaded, onBrowseDisk }) {
 
           {!loading && !error && (!files || files.length === 0) && (
             <div className="LDM-empty mono">
-              // no saved simulations yet
+              {'// no saved simulations yet'}
               <p className="LDM-empty-hint">
                 Use <strong>Save Simulation</strong> on the results page to
                 store the current run, or click <em>Browse from disk</em>

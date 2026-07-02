@@ -76,7 +76,7 @@ function LoadDebrisModal({ onClose, onSelect }) {
 
         <div className="DFM-body LDM-body">
           {loading && (
-            <div className="LDM-empty mono">// loading runs…</div>
+            <div className="LDM-empty mono">{'// loading runs…'}</div>
           )}
 
           {error && (
@@ -85,7 +85,7 @@ function LoadDebrisModal({ onClose, onSelect }) {
 
           {!loading && !error && (!runs || runs.length === 0) && (
             <div className="LDM-empty mono">
-              // no debris runs found yet
+              {'// no debris runs found yet'}
               <p className="LDM-empty-hint">
                 Run a debris analysis first — saved runs will appear
                 here so you can revisit any of them later.

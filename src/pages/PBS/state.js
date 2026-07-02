@@ -396,9 +396,19 @@ export function buildPayload({ numStages, stages, interstages }) {
     };
   }
 
+  // Only send the gaps that actually exist for this stage count
+  // (1..N−1). The calculator iterates whatever keys it receives, so a
+  // leftover gap from a previously-higher stage count would silently
+  // add mass to the totals.
+  const rawInterstages = interstages?.interstages || {};
+  const validInterstages = {};
+  for (let i = 1; i <= numStages - 1; i++) {
+    const section = rawInterstages[i] || rawInterstages[String(i)];
+    if (section) validInterstages[i] = section;
+  }
   out.interstages = {
     num_stages: numStages,
-    interstages: interstages?.interstages || {},
+    interstages: validInterstages,
   };
 
   return { num_stages: numStages, stage_data: out };

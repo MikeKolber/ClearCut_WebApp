@@ -1,0 +1,15 @@
+# Ruff configuration — scoped to the web backend for now. The
+# physics_engines tree is legacy scientific code with its own
+# conventions; bring it under lint gradually, module by module.
+include = ["backend/**/*.py"]
+target-version = "py312"
+line-length = 100
+
+[lint]
+# E/W: pycodestyle, F: pyflakes, B: bugbear (likely-bug patterns)
+select = ["E", "F", "W", "B"]
+# E501: long lines are dominated by docstrings/comments — not worth a
+#       churny reformat right now.
+# E402: app.py deliberately groups imports by section (env/config must
+#       be read before some imports); keep the organization.
+ignore = ["E501", "E402"]

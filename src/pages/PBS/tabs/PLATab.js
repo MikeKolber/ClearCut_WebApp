@@ -9,7 +9,8 @@ function PLATab({ value, onChange }) {
       <ParamCheckbox label="Enable payload adapter for this stage"
         checked={value.enabled} onChange={set('enabled')} />
       <ParamEntry label="Payload Mass" unit="kg"
-        value={value.payload_mass} onChange={set('payload_mass')} />
+        value={value.payload_mass} onChange={set('payload_mass')}
+        disabled={!value.enabled} />
     </>
   );
 }

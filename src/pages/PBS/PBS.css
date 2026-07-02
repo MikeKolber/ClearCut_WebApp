@@ -358,6 +358,22 @@
   animation: pulseDot 2s ease-in-out infinite;
 }
 
+/* Inputs changed since last calculation — amber warning state. */
+.PBS-results-status--stale {
+  color: var(--warning, #e2b93b);
+  cursor: help;
+}
+
+.PBS-results-status--stale .PBS-results-status-dot {
+  background: var(--warning, #e2b93b);
+  box-shadow: 0 0 6px var(--warning, #e2b93b);
+}
+
+.PBS-results-scroll--stale {
+  opacity: 0.45;
+  transition: opacity 160ms ease;
+}
+
 @keyframes pulseDot {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.45; }
@@ -371,6 +387,20 @@
 }
 
 /* Errors now surface via the shared ErrorToast (top-screen pop). */
+
+/* Shown while the form defaults are being fetched — previously the
+   content pane was just empty with no explanation. */
+.PBS-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  animation: pulseDot 1.6s ease-in-out infinite;
+}
 
 /* ─── Busy overlay ──────────────────────────────────────────── */
 
@@ -390,7 +420,10 @@
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--accent);
-  pointer-events: none;
+  /* Block interaction while a calculation is in flight — editing the
+     form or double-clicking Calculate mid-run causes confusing state. */
+  pointer-events: auto;
+  cursor: progress;
 }
 
 @keyframes pbsBusyIn {

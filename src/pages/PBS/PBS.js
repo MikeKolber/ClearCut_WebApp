@@ -6,6 +6,7 @@ import {
   TAB_ORDER,
   makeStageDefaults,
   makeInterstagesDefaults,
+  interstageSectionDefaults,
   buildPayload,
 } from './state';
 
@@ -40,6 +41,10 @@ function PBS() {
   const [interstages, setInterstages] = useState(makeInterstagesDefaults(1));
 
   const [results, setResults] = useState(null);
+  // True when any input changed after the last successful calculation —
+  // the results panel flags itself STALE and exports are disabled so
+  // nobody exports numbers that no longer match the form.
+  const [resultsStale, setResultsStale] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -76,10 +81,38 @@ function PBS() {
     });
   }, [numStages, defaults]);
 
-  // Keep interstages.num_stages in sync with stage count.
+  // Keep the interstage set in sync with the stage count: N stages
+  // have exactly N−1 gaps. Preserve data for gaps that still exist,
+  // seed defaults for new ones, and DROP entries for removed gaps —
+  // otherwise a config edited down from 4 stages to 2 would keep
+  // sending the old gap-2/gap-3 masses to the calculator.
   useEffect(() => {
-    setInterstages((prev) => ({ ...prev, num_stages: numStages }));
+    setInterstages((prev) => {
+      const nextSections = {};
+      for (let i = 1; i <= numStages - 1; i++) {
+        nextSections[i] =
+          (prev.interstages || {})[i]
+          || (prev.interstages || {})[String(i)]
+          || interstageSectionDefaults();
+      }
+      return { num_stages: numStages, interstages: nextSections };
+    });
   }, [numStages]);
+
+  // Keep the active stage inside the valid range when the count drops
+  // (e.g. editing stage 4, then switching to 2 stages).
+  useEffect(() => {
+    setActiveStage((s) => Math.min(s, numStages));
+  }, [numStages]);
+
+  // Any input change after a successful calculation makes the shown
+  // results stale. `results` is read through a ref so the effect only
+  // fires on input edits — recalculating resets the flag explicitly.
+  const resultsRef = useRef(null);
+  resultsRef.current = results;
+  useEffect(() => {
+    setResultsStale((prev) => prev || resultsRef.current != null);
+  }, [numStages, stages, interstages]);
 
   const stageData = stages[activeStage] || null;
 
@@ -101,6 +134,7 @@ function PBS() {
       const payload = buildPayload({ numStages, stages, interstages });
       const res = await calculatePbs(payload);
       setResults(res);
+      setResultsStale(false);
     } catch (e) {
       setError({
         kind: 'runtime',
@@ -309,7 +343,13 @@ function PBS() {
             </span>
           </header>
           <div className="PBS-content-scroll">
-            {tabContent}
+            {defaults === null ? (
+              <div className="PBS-loading mono" role="status">
+                Loading defaults…
+              </div>
+            ) : (
+              tabContent
+            )}
           </div>
         </section>
 
@@ -318,36 +358,56 @@ function PBS() {
           <header className="PBS-results-head">
             <div className="PBS-results-head-left">
               <span className="eyebrow">Telemetry · Results</span>
-              {results && (
+              {results && !resultsStale && (
                 <span className="PBS-results-status mono">
                   <span className="PBS-results-status-dot" /> READY
                 </span>
               )}
+              {results && resultsStale && (
+                <Tooltip
+                  text={'Inputs changed since this was calculated.\nClick Calculate Mass to refresh.'}
+                  placement="bottom"
+                >
+                  <span className="PBS-results-status PBS-results-status--stale mono">
+                    <span className="PBS-results-status-dot" /> STALE
+                  </span>
+                </Tooltip>
+              )}
             </div>
             <div className="PBS-results-actions">
-              <Tooltip text="Export the current results as CSV" placement="bottom">
+              <Tooltip
+                text={resultsStale
+                  ? 'Inputs changed — recalculate before exporting'
+                  : 'Export the current results as CSV'}
+                placement="bottom"
+              >
                 <button
                   type="button"
                   className="PBS-topBtn"
                   onClick={onExportCsv}
-                  disabled={!results}
+                  disabled={!results || resultsStale}
                 >
                   CSV
                 </button>
               </Tooltip>
-              <Tooltip text="Export the current results as plain text" placement="bottom">
+              <Tooltip
+                text={resultsStale
+                  ? 'Inputs changed — recalculate before exporting'
+                  : 'Export the current results as plain text'}
+                placement="bottom"
+              >
                 <button
                   type="button"
                   className="PBS-topBtn"
                   onClick={onExportTxt}
-                  disabled={!results}
+                  disabled={!results || resultsStale}
                 >
                   TXT
                 </button>
               </Tooltip>
             </div>
           </header>
-          <div className="PBS-results-scroll">
+          <div className={`PBS-results-scroll${resultsStale ? ' PBS-results-scroll--stale' : ''}`}>
             <Results results={results} />
           </div>
         </aside>

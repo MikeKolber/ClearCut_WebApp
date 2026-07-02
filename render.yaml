@@ -54,7 +54,7 @@ services:
       name: clearcut-data
       mountPath: /var/data
       sizeGB: 1
-    # 1 process, 4 threads, 120-second timeout.
+    # 1 process, 4 threads, 600-second timeout.
     #
     # Single-worker is REQUIRED here — `_active_runs` (the trajectory
     # / debris run registry) is in-memory per Python process. With
@@ -62,7 +62,14 @@ services:
     # memory would 404 when its polling GET hits worker B.
     # Threads share that memory, so 4 threads gives us ~4 concurrent
     # users with no run-tracking surprises.
-    startCommand: gunicorn -w 1 --threads 4 --timeout 120 -b 0.0.0.0:$PORT app:app
+    #
+    # The 600 s timeout covers the slowest *synchronous* requests —
+    # first-parse of a multi-hundred-MB TDMS file or a large compare
+    # XLSX. (Simulations themselves are subprocesses tracked via short
+    # polling requests, so they aren't bounded by this.) A worker kill
+    # mid-parse would also orphan the in-memory run registry, so the
+    # generous value doubles as protection for live runs.
+    startCommand: gunicorn -w 1 --threads 4 --timeout 600 -b 0.0.0.0:$PORT app:app
     healthCheckPath: /api/ping
     envVars:
       # Pin Python to 3.12. Render's auto-detected default has been

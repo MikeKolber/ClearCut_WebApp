@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-basic-dist-min';
@@ -7,16 +7,11 @@ import TopBar from '../../components/TopBar/TopBar';
 import { getEngineTest, loadEngineTdms } from '../../services/api';
 import ErrorToast from '../../components/ErrorToast/ErrorToast';
 import './TdmsAnalyzer.css';
+import { colorFor } from '../../constants/plotColors';
 
 const Plot = createPlotlyComponent(Plotly);
 
-/** Same plot palette as core/gui/config.py::PLOT_COLORS, retuned for dark bg. */
-const PLOT_COLORS = [
-  '#4DA8DA', '#E06070', '#4ADE9A', '#E8AB2D', '#A78BFA',
-  '#F0825C', '#34D399', '#C084FC', '#60A5FA', '#FBBF24',
-  '#F87171', '#22D3EE', '#A855F7', '#84CC16', '#FB923C',
-];
-const colorFor = (idx) => PLOT_COLORS[idx % PLOT_COLORS.length];
+// Shared palette — see src/constants/plotColors.js.
 
 /** Distinct global-range colors. */
 const RANGE_COLORS = [
@@ -44,6 +39,16 @@ function paletteFromHex(hex) {
 
 let _rid = 0;
 const newRangeId = () => `r${++_rid}`;
+
+/** Trailing-edge debounce for a derived value. */
+function useDebouncedValue(value, delayMs) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 /* ─── Page ─────────────────────────────────────────────────────── */
 
@@ -118,15 +123,29 @@ function TdmsAnalyzer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testName]);
 
+  // Monotonic id for TDMS load requests. Big files parse slowly on the
+  // server, so a user clicking file A then file B can get A's (slower)
+  // response *after* B's — without this guard the stale response would
+  // overwrite the newer selection.
+  const loadRequestIdRef = useRef(0);
+
   const loadFile = async (fileName) => {
+    const requestId = ++loadRequestIdRef.current;
     setLoadingFile(true);
     setError(null);
     setStatus(`Loading ${fileName}…`);
     try {
       const data = await loadEngineTdms(testName, fileName);
+      if (requestId !== loadRequestIdRef.current) return; // superseded
       setSelectedFile(fileName);
-      setChannels(data?.channels || {});
-      setSelectedChannels(new Set());
+      const chans = data?.channels || {};
+      setChannels(chans);
+      // Pre-select the first few channels so the user lands on plotted
+      // data instead of an empty "tick channels on the left" prompt —
+      // they clicked Data Analysis to see data.
+      setSelectedChannels(
+        new Set(Object.keys(chans).sort().slice(0, 4))
+      );
       setBaselineInputs({});
       setRanges([]);
       setPickingFor(null);
@@ -134,6 +153,7 @@ function TdmsAnalyzer() {
         `${fileName} — ${data.channel_count} channel${data.channel_count === 1 ? '' : 's'} in ${data.load_time_s.toFixed(2)}s`
       );
     } catch (e) {
+      if (requestId !== loadRequestIdRef.current) return; // superseded
       setError({
         kind: 'runtime',
         title: `Could not load ${fileName}`,
@@ -141,7 +161,7 @@ function TdmsAnalyzer() {
       });
       setStatus('Load failed');
     } finally {
-      setLoadingFile(false);
+      if (requestId === loadRequestIdRef.current) setLoadingFile(false);
     }
   };
 
@@ -168,6 +188,11 @@ function TdmsAnalyzer() {
     }
     return out;
   }, [baselineInputs]);
+
+  // The chart and the range averages both do O(channels × samples)
+  // work per baseline change — feed them a debounced copy so typing
+  // "12.345" in a BL box costs one rebuild, not six.
+  const debouncedBaselines = useDebouncedValue(baselines, 250);
 
   const globalRanges = useMemo(
     () => ranges.filter((r) => !r.channelName),
@@ -210,34 +235,37 @@ function TdmsAnalyzer() {
             count += 1;
           }
         }
-        inner[name] = count > 0 ? sum / count - (baselines[name] || 0) : null;
+        inner[name] = count > 0 ? sum / count - (debouncedBaselines[name] || 0) : null;
       }
       out[r.id] = inner;
     }
     return out;
-  }, [channels, selectedChannels, ranges, baselines]);
+  }, [channels, selectedChannels, ranges, debouncedBaselines]);
 
   /* ── Handlers ──────────────────────────────────────────────── */
+  // Row-level handlers are wrapped in useCallback (and take the
+  // channel name as an argument) so the memoized ChannelRow only
+  // re-renders for the row the user is actually interacting with.
 
-  const toggleChannel = (name) =>
+  const toggleChannel = useCallback((name) =>
     setSelectedChannels((prev) => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
       return next;
-    });
+    }), []);
 
   const selectAll = () => setSelectedChannels(new Set(channelNames));
   const clearAll = () => setSelectedChannels(new Set());
 
-  const setBaselineFor = (name, raw) =>
-    setBaselineInputs((prev) => ({ ...prev, [name]: raw }));
+  const setBaselineFor = useCallback((name, raw) =>
+    setBaselineInputs((prev) => ({ ...prev, [name]: raw })), []);
 
   const resetBaselines = () => setBaselineInputs({});
 
   // Drop the scoped range belonging to a channel when its baseline-from-range
   // / set-from-first-global helpers fire.
-  const setBaselineFromFirstGlobal = (name) => {
+  const setBaselineFromFirstGlobal = useCallback((name) => {
     const r = globalRanges[0];
     const ch = channels[name];
     if (!r || !ch?.data) return;
@@ -255,27 +283,28 @@ function TdmsAnalyzer() {
     }
     if (count === 0) return;
     setBaselineInputs((prev) => ({ ...prev, [name]: (sum / count).toPrecision(6) }));
-  };
+  }, [globalRanges, channels]);
 
   const addGlobalRange = () => {
     if (globalRanges.length >= MAX_GLOBAL_RANGES) return;
     setPickingFor({ type: 'new-global' });
   };
 
-  const startChannelRange = (channelName) => {
+  const startChannelRange = useCallback((channelName) => {
     setPickingFor((prev) =>
       prev?.type === 'new-channel' && prev.channelName === channelName
         ? null
         : { type: 'new-channel', channelName }
     );
-  };
+  }, []);
 
-  const repickRange = (id) => setPickingFor({ type: 'repick', id });
+  const repickRange = useCallback(
+    (id) => setPickingFor({ type: 'repick', id }), []);
 
   const cancelPicking = () => setPickingFor(null);
 
-  const removeRange = (id) =>
-    setRanges((prev) => prev.filter((r) => r.id !== id));
+  const removeRange = useCallback(
+    (id) => setRanges((prev) => prev.filter((r) => r.id !== id)), []);
 
   const renameRange = (id, label) =>
     setRanges((prev) => prev.map((r) => (r.id === id ? { ...r, label } : r)));
@@ -394,6 +423,7 @@ function TdmsAnalyzer() {
                       key={f.name}
                       type="button"
                       className={`TA-listItem${active ? ' TA-listItem--active' : ''}`}
+                      aria-current={active ? 'true' : undefined}
                       onClick={() => loadFile(f.name)}
                       disabled={loadingFile}
                       title={f.name}
@@ -436,19 +466,19 @@ function TdmsAnalyzer() {
                     ch={channels[name] || {}}
                     color={channelColors[name]}
                     isOn={selectedChannels.has(name)}
-                    onToggle={() => toggleChannel(name)}
+                    onToggle={toggleChannel}
                     blRaw={baselineInputs[name] ?? ''}
-                    onBlChange={(v) => setBaselineFor(name, v)}
+                    onBlChange={setBaselineFor}
                     globalRanges={globalRanges}
                     rangeAverages={rangeAverages}
-                    onSetBaselineFromFirstGlobal={() => setBaselineFromFirstGlobal(name)}
+                    onSetBaselineFromFirstGlobal={setBaselineFromFirstGlobal}
                     scopedRange={scopedRangeFor[name]}
                     isPickingScoped={
                       pickingFor?.type === 'new-channel' && pickingFor.channelName === name
                     }
-                    onStartScopedRange={() => startChannelRange(name)}
-                    onRepickScoped={() => scopedRangeFor[name] && repickRange(scopedRangeFor[name].id)}
-                    onRemoveScoped={() => scopedRangeFor[name] && removeRange(scopedRangeFor[name].id)}
+                    onStartScopedRange={startChannelRange}
+                    onRepickRange={repickRange}
+                    onRemoveRange={removeRange}
                   />
                 ))
               )}
@@ -476,7 +506,7 @@ function TdmsAnalyzer() {
               channels={channels}
               selected={selectedChannels}
               colors={channelColors}
-              baselines={baselines}
+              baselines={debouncedBaselines}
               dragmode={dragmode}
               ranges={ranges}
               onSelected={onPlotSelected}
@@ -501,13 +531,13 @@ function TdmsAnalyzer() {
 
 /* ─── Channel row ─────────────────────────────────────────────── */
 
-function ChannelRow({
+const ChannelRow = React.memo(function ChannelRow({
   name, ch, color, isOn, onToggle,
   blRaw, onBlChange,
   globalRanges, rangeAverages,
   onSetBaselineFromFirstGlobal,
   scopedRange, isPickingScoped,
-  onStartScopedRange, onRepickScoped, onRemoveScoped,
+  onStartScopedRange, onRepickRange, onRemoveRange,
 }) {
   return (
     <div className={`TA-channel${isOn ? ' TA-channel--on' : ''}`}>
@@ -516,7 +546,7 @@ function ChannelRow({
           type="checkbox"
           className="TA-channel-cb"
           checked={isOn}
-          onChange={onToggle}
+          onChange={() => onToggle(name)}
         />
         <span
           className="TA-channel-dot"
@@ -543,13 +573,13 @@ function ChannelRow({
               spellCheck={false}
               placeholder="0"
               value={blRaw}
-              onChange={(e) => onBlChange(e.target.value)}
+              onChange={(e) => onBlChange(name, e.target.value)}
             />
             {globalRanges.length > 0 && (
               <button
                 type="button"
                 className="TA-channel-pick"
-                onClick={onSetBaselineFromFirstGlobal}
+                onClick={() => onSetBaselineFromFirstGlobal(name)}
                 title={`Set baseline = mean of ${globalRanges[0].label}`}
               >
                 ⟵{globalRanges[0].label}
@@ -560,15 +590,15 @@ function ChannelRow({
               <ScopedRangeChip
                 range={scopedRange}
                 avg={rangeAverages[scopedRange.id]?.[name]}
-                onRepick={onRepickScoped}
-                onRemove={onRemoveScoped}
+                onRepick={() => onRepickRange(scopedRange.id)}
+                onRemove={() => onRemoveRange(scopedRange.id)}
               />
             ) : (
               <button
                 type="button"
                 className={`TA-channel-mark${isPickingScoped ? ' TA-channel-mark--picking' : ''}`}
                 style={isPickingScoped ? { color, borderColor: color } : undefined}
-                onClick={onStartScopedRange}
+                onClick={() => onStartScopedRange(name)}
                 title="Mark a range scoped to this plot only"
               >
                 {isPickingScoped ? 'Drag to mark…' : '+ Range'}
@@ -608,7 +638,7 @@ function ChannelRow({
       )}
     </div>
   );
-}
+});
 
 function ScopedRangeChip({ range, avg, onRepick, onRemove }) {
   return (
@@ -784,7 +814,14 @@ function ChartArea({
 }) {
   const channelArray = useMemo(() => [...selected], [selected]);
 
+  // Per-channel cache of baseline-shifted y arrays. Editing one
+  // channel's baseline used to re-copy EVERY selected channel's full
+  // data array; with the cache, only the channel whose (data,
+  // baseline) pair actually changed is recomputed.
+  const yCacheRef = useRef(new Map());
+
   const traces = useMemo(() => {
+    const cache = yCacheRef.current;
     const out = [];
     let idx = 0;
     for (const name of channelArray) {
@@ -794,21 +831,39 @@ function ChartArea({
       const yaxis = idx === 1 ? 'y' : `y${idx}`;
       const xaxis = idx === 1 ? 'x' : `x${idx}`;
       const baseline = baselines[name] || 0;
-      const x = ch.data.map((_, i) => i);
-      const y = baseline === 0
-        ? ch.data
-        : ch.data.map((v) => (v == null ? null : v - baseline));
+
+      let y;
+      if (baseline === 0) {
+        y = ch.data;
+      } else {
+        const hit = cache.get(name);
+        if (hit && hit.data === ch.data && hit.baseline === baseline) {
+          y = hit.y;
+        } else {
+          y = ch.data.map((v) => (v == null ? null : v - baseline));
+          cache.set(name, { data: ch.data, baseline, y });
+        }
+      }
+
       out.push({
         type: 'scattergl',
         mode: 'lines',
         name,
-        x,
+        // Uniform sample index — x0/dx avoids materialising an index
+        // array as long as the data (huge win on multi-100k-sample
+        // channels: no allocation, and Plotly fast-paths linear x).
+        x0: 0,
+        dx: 1,
         y,
         xaxis,
         yaxis,
         line: { color: colors[name], width: 1 },
         hovertemplate: '%{y:.4f}<extra>' + name + '</extra>',
       });
+    }
+    // Evict cache entries for channels no longer plotted.
+    for (const key of cache.keys()) {
+      if (!channelArray.includes(key)) cache.delete(key);
     }
     return out;
   }, [channels, channelArray, colors, baselines]);

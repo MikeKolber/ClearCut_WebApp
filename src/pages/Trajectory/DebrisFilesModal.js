@@ -144,7 +144,7 @@ function DebrisFilesModal({ onClose }) {
 
         <div className="DFM-body">
           {loading && (
-            <div className="DFM-empty mono">// loading run…</div>
+            <div className="DFM-empty mono">{'// loading run…'}</div>
           )}
           {error && !loading && (
             <div className="DFM-empty DFM-empty--err mono">

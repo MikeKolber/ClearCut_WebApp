@@ -1,6 +1,7 @@
 /* ─────────────────────────────────────────────────────────────────
-   ClearCut design tokens — black / monochrome with a single warm
-   coral accent (engine-flame). Inspired by SpaceX livestream chrome.
+   ClearCut design tokens — black / monochrome with a single steel-blue
+   accent (matching the "SPACE" wordmark in the logo). Inspired by
+   SpaceX livestream chrome.
    ───────────────────────────────────────────────────────────────── */
 
 :root {
@@ -35,6 +36,9 @@
   --success: #4ade80;
   --warning: #f59e0b;
   --error:   #ef4444;
+
+  /* Secondary section accent (PBS tab headers, results stripes) */
+  --steel: #a3a3a3;
 
   /* Type */
   --font-sans: 'Inter Tight', -apple-system, BlinkMacSystemFont,

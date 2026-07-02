@@ -247,6 +247,14 @@
 .Landing-footer {
   height: 36px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
   background: rgba(0, 0, 0, 0.85);
   border-top: 1px solid var(--border);
   backdrop-filter: blur(12px) saturate(140%);

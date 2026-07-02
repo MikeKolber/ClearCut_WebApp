@@ -10,7 +10,6 @@ import TopBar from '../../components/TopBar/TopBar';
 import { JumpTabs, getJumpTabs, LiveSimBadge } from './JumpTabs';
 import {
   API_BASE,
-  loadTrajectoryRawAll,
   trajectoryDownloadUrl,
   downloadFromBackend,
 } from '../../services/api';
@@ -162,11 +161,24 @@ function RawData() {
           const { done, value } = await reader.read();
           if (done) break;
           if (cancelled) return;
+          if (received + value.byteLength > expected) {
+            throw new Error(
+              'Response larger than the size announced in headers — aborting'
+            );
+          }
           buf.set(value, received);
           received += value.byteLength;
           setProgress(received / expected);
         }
         if (cancelled) return;
+        if (received !== expected) {
+          // A truncated body (dropped connection, proxy timeout) would
+          // otherwise render as a grid whose tail is silently all-zero.
+          throw new Error(
+            `Download incomplete — received ${received.toLocaleString()} of `
+            + `${expected.toLocaleString()} bytes. Try reloading.`
+          );
+        }
         setDataset({
           total_rows:   totalRows,
           cols_count:   totalCols,
@@ -251,7 +263,7 @@ function RawData() {
         const realColIdx = colIndexMap.get(colName);
         const v = data[rowStart + realColIdx];
         const x = c * COL_WIDTH - scrollLeft + halfCol;
-        if (v !== v /* NaN */) {
+        if (Number.isNaN(v)) {
           ctx.fillStyle = '#525252';
           ctx.fillText('—', x, y);
           ctx.fillStyle = '#e5e5e5';
@@ -295,7 +307,7 @@ function RawData() {
       for (let r = startRow; r < endRow; r++) {
         const y = r * ROW_HEIGHT - scrollTop + ROW_HEIGHT / 2;
         const v = data[r * colsCount + stickyIdx];
-        if (v !== v) {
+        if (Number.isNaN(v)) {
           ctx.fillStyle = '#525252';
           ctx.fillText('—', stickyMid, y);
           ctx.fillStyle = '#e5e5e5';
@@ -360,7 +372,12 @@ function RawData() {
   }, []);
 
   /* ── re-draw whenever the data, columns, or hidden set changes */
-  useEffect(() => { scheduleDraw(); /* eslint-disable-next-line */ }, [dataset, visibleCols, hidden]);
+  useEffect(() => {
+    scheduleDraw();
+    // `scheduleDraw` is a stable closure over refs; adding it to the
+    // deps would re-run the effect every render for no benefit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataset, visibleCols, hidden]);
 
   /* ── scroll handler — mirror header + redraw canvas ─────── */
   const onScroll = () => {

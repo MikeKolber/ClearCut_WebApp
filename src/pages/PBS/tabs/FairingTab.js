@@ -25,9 +25,13 @@ function FairingTab({ value, onChange }) {
         checked={value.enabled} onChange={set('enabled')} />
 
       <Section title="Geometry" accent="var(--steel)" />
+      {/* Geometry only contributes when the fairing is enabled — keep
+          the fields visible (so values aren't hidden state) but
+          disabled, matching what the calculation actually uses. */}
       {FIELDS.map(([key, label, unit]) => (
         <ParamEntry key={key} label={label} unit={unit}
-          value={value[key]} onChange={set(key)} />
+          value={value[key]} onChange={set(key)}
+          disabled={!value.enabled} />
       ))}
     </>
   );
