@@ -1,28 +1,169 @@
+<div align="center">
+
 # ClearCut WebApp
 
-The in-browser engineering suite for ClearCut Space — three rocket
+**The in-browser engineering suite for ClearCut Space** — three rocket
 design and analysis tools, side-by-side, in one place.
 
-| Module                | What it does                                                           |
-| --------------------- | ---------------------------------------------------------------------- |
-| **Trajectory**        | 3-DOF flight simulation, ground-track maps, debris dispersion, runs comparison. |
-| **PBS**               | Per-stage mass budgeting across every major rocket subsystem.           |
-| **Engine Test**       | TDMS sensor data analysis and test-fire video review.                   |
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-API-000000?logo=flask&logoColor=white)
+![Three.js](https://img.shields.io/badge/Three.js-3D%20viewer-000000?logo=threedotjs&logoColor=white)
+![Render](https://img.shields.io/badge/Hosting-Render-46E3B7?logo=render&logoColor=white)
+![Access](https://img.shields.io/badge/Access-Internal_%C2%B7_Login_required-B33A3A)
+
+</div>
+
+| Module          | What it does                                                                     |
+| --------------- | -------------------------------------------------------------------------------- |
+| **Trajectory**  | 3-DOF flight simulation, ground-track maps, debris dispersion, runs comparison, 3D rocket viewer. |
+| **PBS**         | Per-stage mass budgeting across every major rocket subsystem.                    |
+| **Engine Test** | TDMS sensor-data analysis and test-fire video review.                            |
 
 ---
 
 ## Contents
 
-1. [Getting started](#getting-started)
-2. [Running the app](#running-the-app)
-3. [Trajectory Simulation](#trajectory-simulation)
-4. [PBS — Product Breakdown Structure](#pbs--product-breakdown-structure)
-5. [Engine Test](#engine-test)
-6. [Where files live](#where-files-live)
-7. [Adding files by hand](#adding-files-by-hand)
-8. [Keyboard shortcuts](#keyboard-shortcuts)
-9. [Troubleshooting](#troubleshooting)
-10. [Updating](#updating)
+1. [Executive summary & live stats](#executive-summary--live-stats)
+2. [Architecture — how it all fits together](#architecture--how-it-all-fits-together)
+3. [Getting started](#getting-started)
+4. [Running the app](#running-the-app)
+5. [Trajectory Simulation](#trajectory-simulation)
+6. [PBS — Product Breakdown Structure](#pbs--product-breakdown-structure)
+7. [Engine Test](#engine-test)
+8. [Where files live](#where-files-live)
+9. [Adding files by hand](#adding-files-by-hand)
+10. [Keyboard shortcuts](#keyboard-shortcuts)
+11. [Troubleshooting](#troubleshooting)
+12. [Updating](#updating)
+13. [Configuration & deployment](#configuration--deployment)
+14. [Project layout](#project-layout)
+
+---
+
+## Executive summary & live stats
+
+**ClearCut WebApp is an internal, browser-based engineering suite** that puts
+three rocket-design tools — Trajectory simulation, mass budgeting (PBS), and
+engine-test analysis — behind a single company login. There is **nothing for
+end users to install**: they open a URL and work. It runs entirely on managed
+cloud infrastructure (Render + Cloudflare R2), is always-on (no cold starts),
+and is reachable from any modern browser at **`tools.clearcutspace.com`**.
+
+### Deployment at a glance
+
+| Component            | Where it runs                          | Plan / tier                                   |
+| -------------------- | -------------------------------------- | --------------------------------------------- |
+| **Web frontend**     | Render **Static Site** (global CDN)    | Free                                           |
+| **Application API**  | Render **Web Service** (Oregon, US-West) | **Standard** — 2 GB RAM, 1 vCPU, always-on   |
+| **Saved-run library**| Render **persistent disk** (`/var/data`) | 1 GB, survives restarts/redeploys            |
+| **Engine-test data** | **Cloudflare R2** object storage       | Free tier — 10 GB, zero egress fees           |
+| **Est. infra cost**  | —                                      | **≈ $25 / month** ($25 backend + $0 frontend + $0 R2 within free tier) |
+
+### Capacity & limits
+
+| Metric                              | Today's value                                                        |
+| ----------------------------------- | -------------------------------------------------------------------- |
+| **People who can be logged in**     | Unlimited (browser-cookie sessions; one shared team credential)      |
+| **Simultaneous heavy operations**   | **≈ 4** (1 server worker × 4 threads) — extra runs queue briefly     |
+| **Target audience**                 | A ~10–30 person engineering department                               |
+| **Session length**                  | 12 hours, then re-login                                              |
+| **Saved simulation library**        | ~9 full runs (1 GB disk, ≈100 MB each) — prune or grow the disk as needed |
+| **Engine-test recordings**          | Up to 10 GB in R2 (multi-GB TDMS + video kept off the app server)    |
+| **Server memory / CPU**             | 2 GB RAM / 1 vCPU                                                     |
+| **Chart resolution (performance caps)** | Trajectory plots decimated to 10,000 points; TDMS to 20,000 points/channel |
+| **Availability**                    | Always-on — no idle sleep / cold starts                              |
+
+### Security & access
+
+- **Authenticated:** every page and API call requires login. Passwords are
+  stored only as a **bcrypt hash** (never plaintext), sessions are carried in
+  **HTTPS-only signed cookies**, and login is **rate-limited** (5 failed
+  attempts per IP per 5 minutes).
+- **Isolated:** each browser session gets its own private workspace on the
+  server, so two engineers running sims at the same time never clobber each
+  other's live output.
+- **Today it uses one shared team credential.** If the company wants
+  per-person accounts, audit logging, or SSO (Google/Microsoft), that's a
+  well-scoped future upgrade — see *Scaling & integration path* below.
+
+### Scaling & integration path
+
+- **Vertical scaling is one dropdown:** bumping the Render plan adds RAM/CPU
+  for heavier sims or more concurrent users, with no code changes.
+- **Horizontal scaling** (multiple server instances) needs one change first:
+  the live-run tracker is currently in-process memory, so it must move to a
+  shared store (e.g. Redis) before running more than one worker. This is a
+  known, contained piece of work.
+- **Portable by design:** the backend is a standard Flask app and storage is
+  S3-compatible, so it can move to any cloud (AWS/GCP/Azure) or on-prem
+  hardware without a rewrite.
+
+---
+
+## Architecture — how it all fits together
+
+Three layers, one login. The browser never talks to the physics code
+directly — everything goes through the authenticated API.
+
+```
+        Browser (any device)
+   ┌──────────────────────────────┐
+   │  React single-page app       │   ← UI, 3D rocket viewer (Three.js),
+   │  served from Render CDN       │     interactive plots (Plotly),
+   └──────────────┬───────────────┘     maps (deck.gl / MapLibre)
+                  │  HTTPS + signed-cookie session
+                  ▼
+   ┌──────────────────────────────┐
+   │  Flask API (gunicorn)         │   ← auth, request routing, progress
+   │  Render Web Service, always-on│     tracking, file/session management
+   └───────┬───────────────┬───────┘
+           │               │
+   spawns  │               │  reads/writes
+           ▼               ▼
+   ┌───────────────┐  ┌───────────────────────────────┐
+   │ Physics       │  │ Storage                        │
+   │ engines       │  │  • Persistent disk (presets,   │
+   │ (Python subs) │  │    saved runs, session output) │
+   │  • Trajectory │  │  • Cloudflare R2 (engine-test  │
+   │  • PBS        │  │    TDMS + video recordings)     │
+   │  • Debris     │  └───────────────────────────────┘
+   └───────────────┘
+```
+
+**Request flow (example — running a simulation):** the browser posts the
+parameters → the API writes them into that session's private workspace and
+**launches the trajectory engine as a subprocess** → the API streams progress
+back to the browser (the phased progress bar) → when it finishes, results are
+saved to disk and the result pages (plots, map, raw data, 3D structure) read
+them back. Debris runs chain off a finished trajectory the same way.
+
+**Why a subprocess model?** The heavy scientific code (pandas, scipy, numba,
+pyproj, …) runs isolated from the web server, so a long or failed simulation
+can't take the API down, and each run is tracked by an id the browser polls.
+
+### Technology stack
+
+| Layer      | Built with                                                                 |
+| ---------- | -------------------------------------------------------------------------- |
+| Frontend   | React 19, React Router, Three.js (3D), Plotly (charts), deck.gl + MapLibre (maps) |
+| Backend    | Python 3.12, Flask, gunicorn, bcrypt (auth), itsdangerous (session cookies) |
+| Compute    | The `physics_engines/` package — NumPy, pandas, SciPy, numba, pyproj, nptdms |
+| Storage    | Render persistent disk (working data) + Cloudflare R2 / S3 (engine-test archive) |
+| Hosting    | Render (backend web service + frontend static site), Cloudflare R2 object storage |
+
+### The three modules in one line each
+
+- **Trajectory** — a 3-DOF flight simulator: give it a vehicle and it produces
+  the full ascent (altitude, velocity, Mach, thrust, …), ground-track maps,
+  Monte-Carlo debris dispersion, and a 3D model of the rocket it flew.
+- **PBS (Product Breakdown Structure)** — a per-stage mass estimator that rolls
+  every major subsystem (engine, tanks, TVC, fairing, interstages, …) up into
+  dry / propellant / wet mass budgets.
+- **Engine Test** — loads test-stand sensor data (TDMS) into interactive plots
+  and provides frame-accurate review of test-fire videos.
+
+Full usage for each is documented in the sections below.
 
 ---
 
@@ -74,9 +215,16 @@ python app.py
 npm start
 ```
 
-Open **http://localhost:3000** in your browser. The landing page shows
-three module cards plus a status strip with the backend connection
-state and current UTC time.
+Open **http://localhost:3000** in your browser.
+
+> **The first screen is a login** — authentication is always on. For local
+> development the default credentials are `admin` / `admin` (the backend
+> prints a loud warning until you override them). See
+> [Configuration & deployment](#configuration--deployment) for how to set a
+> real username and password.
+
+After signing in, the landing page shows three module cards plus a status
+strip with the backend connection state and current UTC time.
 
 You can leave both terminals running indefinitely. The browser remembers
 the last page you were on, so refreshing keeps you in place — useful
@@ -324,6 +472,57 @@ commands). You're current.
 
 ---
 
+## Configuration & deployment
+
+> This section is for whoever runs/operates the app. Day-to-day users can
+> skip it.
+
+### Environment variables
+
+The backend is configured entirely through environment variables. Locally,
+copy `backend/.env.example` to `backend/.env` and fill it in; in production
+they're set in the Render dashboard. With nothing set, the backend boots with
+insecure `admin` / `admin` defaults and prints a loud warning.
+
+| Variable                    | Purpose                                                   | Default / notes                              |
+| --------------------------- | --------------------------------------------------------- | -------------------------------------------- |
+| `CC_USERNAME`               | Login username                                            | `admin` — **override in production**         |
+| `CC_PASSWORD_HASH`          | **bcrypt hash** of the password (never the plaintext)     | insecure default — **override in production**|
+| `CC_SECRET_KEY`             | Signs the session cookie                                  | random per boot; set a stable value in prod (Render auto-generates one) |
+| `CC_SESSION_HOURS`          | Session lifetime before re-login                          | `12`                                         |
+| `CC_COOKIE_SECURE`          | Send the cookie over HTTPS only                           | `0` local · `1` production                   |
+| `CC_CORS_ORIGINS`           | Comma-separated allow-list of browser origins             | `http://localhost:3000`                      |
+| `CC_DATA_DIR`               | Root for presets, saved sims, and per-session workspaces  | repo path locally · `/var/data` on Render    |
+| `AWS_EC2_METADATA_DISABLED` | Skip the AWS metadata probe (keeps R2 calls fast on Render) | `true` in production                       |
+| `CC_R2_BUCKET`              | Engine-test bucket name — **setting it switches on R2 mode** | unset → read engine tests from local disk |
+| `CC_R2_ENDPOINT`            | Cloudflare R2 S3 endpoint URL                             | required when `CC_R2_BUCKET` is set          |
+| `CC_R2_ACCESS_KEY_ID`       | R2 access key                                             | required when `CC_R2_BUCKET` is set          |
+| `CC_R2_SECRET_ACCESS_KEY`   | R2 secret key                                             | required when `CC_R2_BUCKET` is set          |
+| `CC_R2_PREFIX`              | Optional path prefix inside the bucket                    | empty (test folders at bucket root)          |
+
+Generate a password hash with:
+
+```bash
+python -c "import bcrypt,getpass; print(bcrypt.hashpw(getpass.getpass('pw: ').encode(), bcrypt.gensalt()).decode())"
+```
+
+### How it's deployed
+
+`render.yaml` is a **Render Blueprint** that provisions both services in one
+step:
+
+- **`clearcut-backend`** — the Flask API (gunicorn, always-on) with a 1 GB
+  persistent disk mounted at `/var/data`.
+- **`clearcut-frontend`** — the built React app served as a static site on
+  Render's CDN, pointed at the backend via `REACT_APP_API_BASE`.
+
+Sensitive values (`CC_USERNAME`, `CC_PASSWORD_HASH`, the `CC_R2_*` keys, …)
+are marked `sync: false` in the blueprint, so Render prompts for them on the
+first deploy and never stores them in the repo. Pushing to the `main` branch
+triggers an automatic redeploy of both services.
+
+---
+
 ## Project layout
 
 For reference, here's what lives where in the repo. You only need to
@@ -334,53 +533,63 @@ code maintained by the team.
 ```
 ClearCut_WebApp/
 ├── README.md
-├── package.json                       App manifest (frontend)
+├── package.json                       App manifest (frontend deps + scripts)
+├── render.yaml                        Render blueprint (backend + frontend services)
 ├── public/                            Static assets served as-is
 │   └── Images/                        Logos, brand artwork
 │
-├── src/                               Frontend application
+├── src/                               Frontend application (React)
 │   ├── App.js                         Top-level router
 │   ├── index.js                       App entry point
+│   ├── setupProxy.js                  Dev-server proxy (/api → backend)
 │   ├── assets/                        In-app images / icons
-│   ├── components/                    Shared UI (TopBar, Tooltip, Form, …)
+│   ├── components/                    Shared UI (TopBar, NavButton, Tooltip,
+│   │                                    Form, ErrorToast, ShortcutsOverlay)
 │   ├── pages/
+│   │   ├── Login/                     Login screen (auth gate)
 │   │   ├── Landing/                   Home screen + module cards
 │   │   ├── Trajectory/                Trajectory + Plot / Map / Raw / Compare
-│   │   ├── PBS/                       Product Breakdown Structure
+│   │   │                                + 3D rocket viewer (rocketScene.js)
+│   │   ├── PBS/                       Product Breakdown Structure (+ tabs/)
 │   │   └── EngineTest/                Engine Test (Data Analysis + Video)
-│   ├── services/                      API client
-│   ├── styles/                        Global styles / theme
-│   └── setupProxy.js                  Dev-server proxy config
+│   ├── services/                      API client (services/api.js)
+│   ├── utils/                         Small shared helpers (download.js)
+│   └── styles/                        Global styles / theme
 │
-├── backend/                           Application server
-│   ├── app.py
-│   └── requirements.txt
+├── backend/                           Application server (Flask API)
+│   ├── app.py                         Routes, auth, sessions, run tracking
+│   ├── engine_test_storage.py         Local-disk / Cloudflare-R2 storage backend
+│   ├── requirements.txt               Backend (web/auth) dependencies
+│   └── .env.example                   Template for the CC_* environment vars
 │
 └── physics_engines/                   Calculation engines + user data
     ├── pyproject.toml
     └── core/
-        ├── requirements.txt
+        ├── requirements.txt           Scientific-stack dependencies
         │
         ├── Trajectory Simulation/
         │   ├── src/                   Simulation source code
+        │   │   └── sketch/            3D-structure generator (desktop origin)
         │   ├── json_files/
         │   │   ├── presets/           ← Trajectory presets (you can add here)
+        │   │   ├── debris_presets/    ← Saved debris configurations
+        │   │   ├── json_debris/       Working debris params
         │   │   └── _current.json      Working params for the latest run
         │   ├── Pre-loaded Trajectories/   ← Saved sims (you can add here)
         │   ├── output/                The most recent run's CSV (do not edit)
         │   ├── debris_data/           One folder per debris run
         │   ├── data/                  Aero coefficients and reference tables
-        │   └── assets/                Textures used by the 3D rocket viewer
+        │   └── assets/                Textures / flags for the rocket sketch
         │
         ├── PBS/
         │   ├── calculator.py
         │   └── RocketMassCalc/
-        │       ├── helpers/
+        │       ├── helpers/           Per-subsystem mass models (+ CEA/)
         │       └── data/
         │           └── initial_parameters.json   ← PBS form defaults
         │
         └── Engine Tests/
-            └── data/                  ← Engine test recordings go here
+            └── data/                  ← Engine test recordings (local-disk mode)
                 ├── README.md          Folder convention for new tests
                 └── <test name>/       One folder per test (.tdms + videos)
 ```
@@ -388,3 +597,7 @@ ClearCut_WebApp/
 Arrows (`←`) mark the folders you might add files to by hand. See
 [Where files live](#where-files-live) for what each user-data folder
 expects.
+
+> In production, engine-test recordings are served from **Cloudflare R2**
+> instead of the local `Engine Tests/data/` folder (see
+> [Configuration & deployment](#configuration--deployment)).
