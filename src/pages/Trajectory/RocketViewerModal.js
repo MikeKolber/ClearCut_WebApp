@@ -40,6 +40,19 @@ function RocketViewerModal({ onClose }) {
   const [bootingScene, setBootingScene] = useState(false);
   const [error, setError] = useState(null);
   const [autoRotate, setAutoRotate] = useState(true);
+  /* ─ sequence state: 'idle' | 'launch' | 'tour' ─
+     While a sequence runs the regular overlays hide and the launch
+     HUD / tour letterbox takes over the canvas. */
+  const [mode, setMode] = useState('idle');
+  const [countdown, setCountdown] = useState(null);
+  const [callout, setCallout] = useState(null);       // {label, sub, key}
+  const [telemetry, setTelemetry] = useState(null);
+  const [caption, setCaption] = useState(null);       // {text, key}
+  const [fadeOut, setFadeOut] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [xrayOn, setXrayOn] = useState(false);
+  const [flashKey, setFlashKey] = useState(null);
+  const fadeTimers = useRef([]);
   /* Defaults to horizontal — matches the scene's initial tilt
      (rocketScene starts with tiltCurrent = -π/2, "vehicle on
      display" framing) so the toolbar button shows the correct
@@ -111,12 +124,25 @@ function RocketViewerModal({ onClose }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  // Esc closes the modal.
+  /* Esc: during a launch/tour sequence it bails out of the sequence;
+     otherwise it closes the modal. Refs keep the handler stable. */
+  const modeRef = useRef('idle');
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  const abortRef = useRef(() => {});
+  const skipTourRef = useRef(() => {});
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (modeRef.current === 'launch') { abortRef.current(); return; }
+      if (modeRef.current === 'tour')   { skipTourRef.current(); return; }
+      onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  /* Clear any pending sequence-teardown timers on unmount. */
+  useEffect(() => () => { fadeTimers.current.forEach(clearTimeout); }, []);
 
   /* ─── controls ─── */
   const onToggleRotate = () => {
@@ -162,11 +188,164 @@ function RocketViewerModal({ onClose }) {
   const onResetView = () => {
     sceneRef.current?.resetView?.();
     setExploded(false);
-    setHorizontal(false);
+    /* The scene's reset lands in the horizontal showroom framing. */
+    setHorizontal(true);
     setFocusFrac(0.5);
     setAutoRotate(true);
     setCoverOn(true);
+    setXrayOn(false);
   };
+
+  /* ─── launch / tour / X-ray / snapshot ─────────────────────────
+     The scene owns the physics + camera; the modal just reflects
+     the event stream onto the HUD and manages enter/exit fades. */
+
+  /* Shared "sequence is over" teardown: fade the canvas to black,
+     restore the showroom state behind the fade, sync every toggle
+     label, fade back in. */
+  const settleAfterSequence = (restoreFn) => {
+    setFadeOut(true);
+    fadeTimers.current.push(setTimeout(() => {
+      restoreFn?.();
+      setMode('idle');
+      setCountdown(null);
+      setCallout(null);
+      setTelemetry(null);
+      setCaption(null);
+      setFlashKey(null);
+      /* Scene's reset lands: cover on, horizontal, spinning, closed. */
+      setExploded(false);
+      setHorizontal(true);
+      setFocusFrac(0.5);
+      setAutoRotate(true);
+      setCoverOn(true);
+      setXrayOn(false);
+      fadeTimers.current.push(setTimeout(() => setFadeOut(false), 80));
+    }, 620));
+  };
+
+  const handleLaunchEvent = (evt) => {
+    switch (evt.type) {
+      case 'countdown':
+        setCountdown(evt.n > 0 ? evt.n : null);
+        break;
+      case 'callout':
+        setCallout({ label: evt.label, sub: evt.sub, key: Date.now() });
+        break;
+      case 'telemetry':
+        setTelemetry(evt);
+        break;
+      case 'flash':
+        setFlashKey(Date.now());
+        break;
+      case 'done':
+        settleAfterSequence(() => sceneRef.current?.abortLaunch?.());
+        break;
+      default:
+        break;
+    }
+  };
+
+  const onLaunch = () => {
+    const ok = sceneRef.current?.startLaunch?.(handleLaunchEvent);
+    if (!ok) return;
+    setMode('launch');
+    setCountdown(null);
+    setCallout(null);
+    setTelemetry(null);
+    setXrayOn(false);
+    setCoverOn(true);
+    setExploded(false);
+  };
+
+  const onAbortLaunch = () => {
+    settleAfterSequence(() => sceneRef.current?.abortLaunch?.());
+  };
+  abortRef.current = onAbortLaunch;
+
+  const handleTourEvent = (evt) => {
+    switch (evt.type) {
+      case 'caption':
+        setCaption({ text: evt.text, key: Date.now() });
+        break;
+      case 'done':
+      case 'cancelled':
+        /* The scene has already reset itself (endTour → doResetView);
+           just sync the UI. A short fade smooths the camera snap on
+           cancel; on natural completion the camera is already home. */
+        settleAfterSequence(null);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const onTour = () => {
+    const ok = sceneRef.current?.startTour?.(handleTourEvent);
+    if (!ok) return;
+    setMode('tour');
+    setCaption(null);
+    setXrayOn(false);
+  };
+
+  const onSkipTour = () => { sceneRef.current?.skipTour?.(); };
+  skipTourRef.current = onSkipTour;
+
+  const onToggleXRay = () => {
+    const on = sceneRef.current?.toggleXRay?.();
+    if (typeof on === 'boolean') {
+      setXrayOn(on);
+      if (on) setCoverOn(false);
+    }
+  };
+
+  const onToggleMute = () => {
+    const m = sceneRef.current?.toggleAudio?.();
+    if (typeof m === 'boolean') setMuted(m);
+  };
+
+  const onSnapshot = () => {
+    const url = sceneRef.current?.snapshot?.();
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clearcut-rocket-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  /* ─── keyboard shortcuts (idle mode only) ──────────────────────
+     L launch · T tour · X x-ray · D disassemble · C shell ·
+     R reset · S snapshot · Space pause/resume spin. The handlers
+     live in a ref so the single window listener never goes stale. */
+  const keysRef = useRef({});
+  keysRef.current = {
+    onLaunch, onTour, onToggleXRay, onToggleExplode,
+    onToggleCover, onResetView, onToggleRotate, onSnapshot,
+  };
+  useEffect(() => {
+    const onKey = (e) => {
+      if (modeRef.current !== 'idle') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const k = keysRef.current;
+      switch (e.key === ' ' ? ' ' : e.key.toLowerCase()) {
+        case 'l': k.onLaunch();        break;
+        case 't': k.onTour();          break;
+        case 'x': k.onToggleXRay();    break;
+        case 'd': k.onToggleExplode(); break;
+        case 'c': k.onToggleCover();   break;
+        case 'r': k.onResetView();     break;
+        case 's': k.onSnapshot();      break;
+        case ' ': e.preventDefault(); k.onToggleRotate(); break;
+        default: break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const onFocusInput = (e) => {
     const v = Number(e.target.value);
     setFocusFrac(v);
@@ -283,6 +462,10 @@ function RocketViewerModal({ onClose }) {
                 </div>
               )}
 
+              {/* Everything below is the idle-mode overlay suite; a
+                  running launch/tour swaps it out for its own HUD. */}
+              {mode === 'idle' && (
+              <>
               {/* Bottom-left: legend. Same color codes as the desktop. */}
               <div className="RVM-legend mono">
                 <Swatch color="#1a1a1a" label="Nozzle" />
@@ -303,6 +486,18 @@ function RocketViewerModal({ onClose }) {
                   vertical/horizontal, reset) underneath at the
                   smaller default size. */}
               <div className="RVM-toolbar">
+                {/* Marquee action — the full launch sequence. Sits on
+                    top of the stack in mission-red so it's the first
+                    thing every visitor is drawn to. */}
+                <button
+                  type="button"
+                  className="RVM-toolbtn-primary RVM-toolbtn-launch"
+                  onClick={onLaunch}
+                  title="Run the full launch sequence — countdown, ignition, staging, payload deploy"
+                >
+                  <span className="RVM-toolbtn-primary-glyph" aria-hidden="true">▲</span>
+                  <span className="RVM-toolbtn-primary-label">Launch</span>
+                </button>
                 {/* Outer-cover control. Sits above Disassemble as its
                     own primary action: dissolves the finished-rocket
                     skin away to expose the internal structure. The
@@ -368,6 +563,32 @@ function RocketViewerModal({ onClose }) {
                     {exploded ? 'Reassemble' : 'Disassemble'}
                   </span>
                 </button>
+                <div className="RVM-toolbar-row">
+                  <button
+                    type="button"
+                    className="RVM-toolbtn"
+                    onClick={onTour}
+                    title="Play a self-running cinematic tour of the vehicle"
+                  >
+                    ▶ Tour
+                  </button>
+                  <button
+                    type="button"
+                    className={`RVM-toolbtn${xrayOn ? ' RVM-toolbtn--xray-on' : ''}`}
+                    onClick={onToggleXRay}
+                    title="X-ray hologram view — see through every structure"
+                  >
+                    ◈ X-Ray
+                  </button>
+                  <button
+                    type="button"
+                    className="RVM-toolbtn"
+                    onClick={onSnapshot}
+                    title="Save the current view as a PNG"
+                  >
+                    ⬓ Snapshot
+                  </button>
+                </div>
                 <div className="RVM-toolbar-row">
                   <button
                     type="button"
@@ -529,13 +750,136 @@ function RocketViewerModal({ onClose }) {
                   the bottom-right corner). */}
               <div className="RVM-hint mono">
                 drag · scroll · slide
+                <br />
+                L launch · T tour · X x-ray · D explode
               </div>
+              </>
+              )}
+
+              {/* ═══ LAUNCH HUD ═══════════════════════════════════
+                  Countdown digits, event callouts, live telemetry
+                  strip and the abort/mute controls. All plain DOM on
+                  top of the canvas, fed by the scene's event stream. */}
+              {mode === 'launch' && (
+                <>
+                  <div className="RVM-live mono">
+                    <span className="RVM-live-dot" aria-hidden="true" />
+                    LIVE · CLEARCUT MISSION CONTROL
+                  </div>
+                  {countdown != null && (
+                    <div key={countdown} className="RVM-countdown mono" aria-live="assertive">
+                      <span className="RVM-countdown-t">T−</span>{countdown}
+                    </div>
+                  )}
+                  {callout && (
+                    <div key={callout.key} className="RVM-callout" aria-live="polite">
+                      <div className="RVM-callout-label">{callout.label}</div>
+                      {callout.sub && <div className="RVM-callout-sub mono">{callout.sub}</div>}
+                    </div>
+                  )}
+                  {telemetry && (
+                    <div className="RVM-telemetry mono" aria-label="Live telemetry">
+                      <div className="RVM-tele-cell RVM-tele-clock">
+                        <span className="RVM-tele-key">MET</span>
+                        <span className="RVM-tele-val">
+                          T{telemetry.tSign}{formatClock(telemetry.tAbs)}
+                        </span>
+                      </div>
+                      <TeleCell label="ALT" value={formatAltitude(telemetry.alt)} />
+                      <TeleCell label="VEL" value={formatVelocity(telemetry.vel)} />
+                      <TeleCell label="MACH" value={telemetry.mach.toFixed(1)} />
+                      <TeleCell label="THR" value={`${Math.round(telemetry.throttle)}%`} />
+                      <TeleCell label="G" value={telemetry.g.toFixed(1)} />
+                    </div>
+                  )}
+                  <div className="RVM-seq-controls">
+                    <button
+                      type="button"
+                      className="RVM-toolbtn"
+                      onClick={onToggleMute}
+                      title={muted ? 'Unmute launch audio' : 'Mute launch audio'}
+                    >
+                      {muted ? '∅ Sound off' : '≋ Sound on'}
+                    </button>
+                    <button
+                      type="button"
+                      className="RVM-toolbtn RVM-toolbtn-abort"
+                      onClick={onAbortLaunch}
+                      title="Abort the launch sequence (Esc)"
+                    >
+                      ✕ Abort
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* ═══ TOUR OVERLAY ═════════════════════════════════
+                  Film-style letterbox bars + streaming captions. */}
+              {mode === 'tour' && (
+                <>
+                  <div className="RVM-letterbox RVM-letterbox--top">
+                    <span className="RVM-tour-title mono">CLEARCUT — VEHICLE TOUR</span>
+                  </div>
+                  <div className="RVM-letterbox RVM-letterbox--bottom" />
+                  {caption && (
+                    <div key={caption.key} className="RVM-tour-caption mono">
+                      {caption.text}
+                    </div>
+                  )}
+                  <div className="RVM-seq-controls">
+                    <button
+                      type="button"
+                      className="RVM-toolbtn"
+                      onClick={onSkipTour}
+                      title="Skip the tour (Esc or click the canvas)"
+                    >
+                      ⏭ Skip tour
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Ignition flash — remounts (via key) on every flash
+                  event so the CSS animation restarts. */}
+              {flashKey != null && <div key={flashKey} className="RVM-flash" />}
+
+              {/* Fade-to-black used to hide the reset snap when a
+                  sequence ends. Always mounted so the transition runs. */}
+              <div className={`RVM-fade${fadeOut ? ' RVM-fade--on' : ''}`} />
             </>
           )}
         </div>
       </div>
     </div>
   );
+}
+
+function TeleCell({ label, value }) {
+  return (
+    <div className="RVM-tele-cell">
+      <span className="RVM-tele-key">{label}</span>
+      <span className="RVM-tele-val">{value}</span>
+    </div>
+  );
+}
+
+/** T± mission clock, MM:SS. */
+function formatClock(s) {
+  const sec = Math.max(0, s);
+  const m = Math.floor(sec / 60);
+  const r = sec - m * 60;
+  return `${String(m).padStart(2, '0')}:${String(Math.floor(r)).padStart(2, '0')}`;
+}
+
+function formatAltitude(m) {
+  if (m >= 10000) return `${(m / 1000).toFixed(1)} km`;
+  if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
+  return `${Math.max(0, m).toFixed(0)} m`;
+}
+
+function formatVelocity(v) {
+  if (v >= 1000) return `${(v / 1000).toFixed(2)} km/s`;
+  return `${Math.max(0, v).toFixed(0)} m/s`;
 }
 
 function Swatch({ color, label }) {

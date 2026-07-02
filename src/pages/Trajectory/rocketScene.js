@@ -263,6 +263,10 @@ function addNozzle(g, y, stageR, engLen) {
   );
   glow.rotation.x = Math.PI / 2;
   glow.position.y = y - len;
+  /* `userData.plume` tags let the launch-sequence controller find and
+     flare each stage's exhaust visuals without keeping refs through
+     the builder call chain. */
+  glow.userData.plume = 'ring';
   g.add(glow);
 
   const plH = engLen * 0.5, exitY = y - len;
@@ -270,12 +274,16 @@ function addNozzle(g, y, stageR, engLen) {
     new THREE.ConeGeometry(eR * 0.3, plH * 0.5, 24, 1, true),
     new THREE.MeshBasicMaterial({ color: 0xff8833, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }),
   );
-  cM.position.y = exitY - plH * 0.25; g.add(cM);
+  cM.position.y = exitY - plH * 0.25;
+  cM.userData.plume = 'inner';
+  g.add(cM);
   const oM = new THREE.Mesh(
     new THREE.ConeGeometry(eR * 0.7, plH, 24, 1, true),
     new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false }),
   );
-  oM.position.y = exitY - plH * 0.5; g.add(oM);
+  oM.position.y = exitY - plH * 0.5;
+  oM.userData.plume = 'outer';
+  g.add(oM);
 
   /* Turbopump exhaust pipe — small but adds engineering credibility. */
   const pipeA = Math.PI * 0.75;
@@ -1552,6 +1560,18 @@ function buildRocket(D) {
       stage1Top: s1Top,
       is12Top, s2Top, is23Top, s3Top, plTop, fTop,
     },
+    /* Launch-sequence choreography data: each powered stage's group,
+       its engine-exit height (root-local) and radius, so the launch
+       controller can flare the right plume, hang a light at the right
+       nozzle, and jettison the right parts in the right order. */
+    launchParts: {
+      stages: [
+        { group: stage1, exitY: s1bot - sk(D, 1, 'engine_length') * 0.45, R: D.stage1_radius },
+        { group: stage2, exitY: s2bot - sk(D, 2, 'engine_length') * 0.45, R: D.stage2_radius },
+        { group: stage3, exitY: s3engBot - sk(D, 3, 'engine_length') * 0.45, R: D.stage3_radius },
+      ],
+      inter12, inter23, payload, fairing, shell,
+    },
   };
 }
 
@@ -1669,6 +1689,548 @@ function loadImage(url) {
   });
 }
 
+/* ---------- procedural launch audio (WebAudio, no assets) ----------
+ *
+ * Everything is synthesised: the engine rumble is looped brown noise
+ * through a low-pass filter (cutoff + gain track the throttle), the
+ * countdown blips are plain oscillators, and staging events fire a
+ * band-passed noise burst. Created lazily inside the user's Launch
+ * click so the AudioContext never hits autoplay restrictions.
+ */
+function createLaunchAudio() {
+  let ctx = null;
+  let rumbleGain = null;
+  let rumbleFilter = null;
+  let rumbleSrc = null;
+  let muted = false;
+
+  const ensure = () => {
+    if (ctx) {
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      return true;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    ctx = new AC();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+    /* Brown noise buffer (2 s, looped). */
+    const len = ctx.sampleRate * 2;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.02 * white) / 1.02;
+      data[i] = last * 3.5;
+    }
+    rumbleSrc = ctx.createBufferSource();
+    rumbleSrc.buffer = buf;
+    rumbleSrc.loop = true;
+    rumbleFilter = ctx.createBiquadFilter();
+    rumbleFilter.type = 'lowpass';
+    rumbleFilter.frequency.value = 60;
+    rumbleGain = ctx.createGain();
+    rumbleGain.gain.value = 0;
+    rumbleSrc.connect(rumbleFilter).connect(rumbleGain).connect(ctx.destination);
+    rumbleSrc.start();
+    return true;
+  };
+
+  return {
+    setMuted(m) { muted = m; if (m && rumbleGain) rumbleGain.gain.value = 0; },
+    isMuted() { return muted; },
+    /** Engine rumble level 0..1 — gain and filter cutoff both track it. */
+    setRumble(level) {
+      if (!ensure() || muted) return;
+      const l = Math.max(0, Math.min(1, level));
+      rumbleGain.gain.setTargetAtTime(l * 0.55, ctx.currentTime, 0.08);
+      rumbleFilter.frequency.setTargetAtTime(50 + l * 260, ctx.currentTime, 0.1);
+    },
+    /** Countdown blip; the final "zero" gets a higher, longer tone. */
+    beep(final = false) {
+      if (!ensure() || muted) return;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = final ? 1180 : 880;
+      const t = ctx.currentTime;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + (final ? 0.5 : 0.16));
+      osc.connect(g).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + (final ? 0.55 : 0.2));
+    },
+    /** Staging thump — short band-passed noise burst. */
+    burst() {
+      if (!ensure() || muted) return;
+      const len = ctx.sampleRate * 0.4;
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.value = 180;
+      f.Q.value = 0.8;
+      const g = ctx.createGain();
+      g.gain.value = 0.5;
+      src.connect(f).connect(g).connect(ctx.destination);
+      src.start();
+    },
+    dispose() {
+      try { rumbleSrc && rumbleSrc.stop(); } catch {}
+      try { ctx && ctx.close(); } catch {}
+      ctx = null;
+    },
+  };
+}
+
+/* ---------- exhaust particle system ----------
+ *
+ * A recycled pool of additive-blended points spawned at the active
+ * engine's nozzle exit (world space — the pool is parented to the
+ * scene so particles trail behind the moving rocket). Each particle
+ * carries velocity + life; colour runs white-hot → orange → dark as
+ * it ages via per-particle color attribute updates.
+ */
+function createExhaust(scene, count = 900) {
+  const pos   = new Float32Array(count * 3);
+  const col   = new Float32Array(count * 3);
+  const vel   = new Float32Array(count * 3);
+  const life  = new Float32Array(count);   // remaining life (s)
+  const lifeT = new Float32Array(count);   // total life (s)
+  for (let i = 0; i < count; i++) { life[i] = -1; pos[i * 3 + 1] = 1e6; }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+  const mtl = new THREE.PointsMaterial({
+    size: 0.16,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+  });
+  const points = new THREE.Points(geo, mtl);
+  points.frustumCulled = false;
+  points.visible = false;
+  scene.add(points);
+
+  let cursor = 0;
+  /* Optional deck plane: particles that hit it deflect sideways —
+     the classic flame-trench splash. Null = no floor (in flight). */
+  let floorY = null;
+
+  return {
+    setScale(s) { mtl.size = 0.16 * s; },
+    setFloor(y) { floorY = y; },
+    /** Spawn `n` particles at world `origin`, biased along `dir`. */
+    spawn(origin, dir, n, speed, spread) {
+      points.visible = true;
+      for (let k = 0; k < n; k++) {
+        const i = cursor;
+        cursor = (cursor + 1) % count;
+        pos[i * 3]     = origin.x + (Math.random() - 0.5) * spread * 0.4;
+        pos[i * 3 + 1] = origin.y + (Math.random() - 0.5) * spread * 0.4;
+        pos[i * 3 + 2] = origin.z + (Math.random() - 0.5) * spread * 0.4;
+        const s = speed * (0.6 + Math.random() * 0.8);
+        vel[i * 3]     = dir.x * s + (Math.random() - 0.5) * spread * 3;
+        vel[i * 3 + 1] = dir.y * s + (Math.random() - 0.5) * spread * 1.4;
+        vel[i * 3 + 2] = dir.z * s + (Math.random() - 0.5) * spread * 3;
+        lifeT[i] = life[i] = 0.5 + Math.random() * 0.9;
+      }
+    },
+    update(dt) {
+      if (!points.visible) return;
+      let any = false;
+      for (let i = 0; i < count; i++) {
+        if (life[i] < 0) continue;
+        any = true;
+        life[i] -= dt;
+        if (life[i] < 0) { pos[i * 3 + 1] = 1e6; continue; }
+        pos[i * 3]     += vel[i * 3] * dt;
+        pos[i * 3 + 1] += vel[i * 3 + 1] * dt;
+        pos[i * 3 + 2] += vel[i * 3 + 2] * dt;
+        /* Slight buoyant slowdown + turbulence. */
+        vel[i * 3 + 1] *= (1 - 0.4 * dt);
+        /* Deck splash: convert the impact speed into an outward
+           horizontal fling along the particle's drift direction. */
+        if (floorY != null && pos[i * 3 + 1] < floorY) {
+          const impact = Math.abs(vel[i * 3 + 1]);
+          const hx = vel[i * 3], hz = vel[i * 3 + 2];
+          const hLen = Math.hypot(hx, hz) || 1;
+          pos[i * 3 + 1] = floorY;
+          vel[i * 3 + 1] = impact * 0.1;
+          vel[i * 3]     = (hx / hLen) * impact * 0.75;
+          vel[i * 3 + 2] = (hz / hLen) * impact * 0.75;
+        }
+        const a = life[i] / lifeT[i];   // 1 fresh → 0 dead
+        if (a > 0.75) { col[i * 3] = 1.0; col[i * 3 + 1] = 0.95; col[i * 3 + 2] = 0.85; }
+        else if (a > 0.4) { col[i * 3] = 1.0; col[i * 3 + 1] = 0.45 + a * 0.4; col[i * 3 + 2] = 0.12; }
+        else { col[i * 3] = 0.55 * a + 0.2; col[i * 3 + 1] = 0.18 * a; col[i * 3 + 2] = 0.05 * a; }
+      }
+      if (!any) points.visible = false;
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.color.needsUpdate = true;
+    },
+    clear() {
+      for (let i = 0; i < count; i++) { life[i] = -1; pos[i * 3 + 1] = 1e6; }
+      geo.attributes.position.needsUpdate = true;
+      points.visible = false;
+    },
+    dispose() { scene.remove(points); geo.dispose(); mtl.dispose(); },
+  };
+}
+
+/* ---------- pad smoke (soft billow particles) ----------
+ *
+ * Separate from the orange exhaust: gray, normal-blended, soft round
+ * sprites that rush horizontally out of the flame trench at ignition
+ * and slowly rise/expand — the classic pad "steam wall". Over the
+ * near-black backdrop, fading each particle's colour toward black is
+ * visually identical to alpha fade but keeps the material simple.
+ */
+function createSmoke(scene, count = 520) {
+  const pos   = new Float32Array(count * 3);
+  const col   = new Float32Array(count * 3);
+  const vel   = new Float32Array(count * 3);
+  const life  = new Float32Array(count);
+  const lifeT = new Float32Array(count);
+  const bright = new Float32Array(count);
+  for (let i = 0; i < count; i++) { life[i] = -1; pos[i * 3 + 1] = 1e6; }
+
+  /* Soft radial sprite so the points read as puffs, not squares. */
+  const spriteC = document.createElement('canvas');
+  spriteC.width = spriteC.height = 64;
+  const sx = spriteC.getContext('2d');
+  const grad = sx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  sx.fillStyle = grad;
+  sx.fillRect(0, 0, 64, 64);
+  const sprite = new THREE.CanvasTexture(spriteC);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+  const mtl = new THREE.PointsMaterial({
+    size: 1,
+    map: sprite,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  const points = new THREE.Points(geo, mtl);
+  points.frustumCulled = false;
+  points.visible = false;
+  scene.add(points);
+
+  let cursor = 0;
+
+  return {
+    setScale(s) { mtl.size = s; },
+    /** Radial ground burst centred on `origin`. */
+    spawn(origin, n, speed) {
+      points.visible = true;
+      for (let k = 0; k < n; k++) {
+        const i = cursor;
+        cursor = (cursor + 1) % count;
+        const a = Math.random() * Math.PI * 2;
+        const sp = speed * (0.35 + Math.random() * 0.9);
+        pos[i * 3]     = origin.x + Math.cos(a) * speed * 0.05;
+        pos[i * 3 + 1] = origin.y + Math.random() * speed * 0.02;
+        pos[i * 3 + 2] = origin.z + Math.sin(a) * speed * 0.05;
+        vel[i * 3]     = Math.cos(a) * sp;
+        vel[i * 3 + 1] = speed * (0.03 + Math.random() * 0.16);
+        vel[i * 3 + 2] = Math.sin(a) * sp;
+        lifeT[i] = life[i] = 2.2 + Math.random() * 2.4;
+        bright[i] = 0.35 + Math.random() * 0.3;
+      }
+    },
+    update(dt) {
+      if (!points.visible) return;
+      let any = false;
+      for (let i = 0; i < count; i++) {
+        if (life[i] < 0) continue;
+        any = true;
+        life[i] -= dt;
+        if (life[i] < 0) { pos[i * 3 + 1] = 1e6; continue; }
+        pos[i * 3]     += vel[i * 3] * dt;
+        pos[i * 3 + 1] += vel[i * 3 + 1] * dt;
+        pos[i * 3 + 2] += vel[i * 3 + 2] * dt;
+        /* Horizontal drag so the wall of steam slows and hangs. */
+        vel[i * 3]     *= (1 - 0.55 * dt);
+        vel[i * 3 + 2] *= (1 - 0.55 * dt);
+        const a = Math.max(life[i] / lifeT[i], 0);
+        const c = bright[i] * a * a;
+        col[i * 3] = c; col[i * 3 + 1] = c; col[i * 3 + 2] = c * 1.05;
+      }
+      if (!any) points.visible = false;
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.color.needsUpdate = true;
+    },
+    clear() {
+      for (let i = 0; i < count; i++) { life[i] = -1; pos[i * 3 + 1] = 1e6; }
+      geo.attributes.position.needsUpdate = true;
+      points.visible = false;
+    },
+    dispose() { scene.remove(points); geo.dispose(); mtl.dispose(); sprite.dispose(); },
+  };
+}
+
+/* ---------- launch pad ----------
+ *
+ * Concrete apron + flame trench, four lightning masts with blinking
+ * beacons, a lattice-ish service tower, and hold-down arms that swing
+ * back at liftoff. Only visible during a launch sequence, so the
+ * showroom view stays a clean "vehicle in space" display.
+ *
+ * `padTopY` is the world height of the pad deck (rocket bell tip plus
+ * a small stand-off); `R1` is stage 1's radius for sizing the arms.
+ */
+function buildLaunchPad(totalH, padTopY, R1) {
+  const g = new THREE.Group();
+  g.visible = false;
+
+  /* Vast ground plane — reads as a night-time horizon during ascent. */
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(totalH * 9, 48),
+    new THREE.MeshStandardMaterial({ color: 0x05070b, roughness: 1, metalness: 0 }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = padTopY - totalH * 0.045;
+  g.add(ground);
+
+  /* Concrete apron. */
+  const apron = new THREE.Mesh(
+    new THREE.CylinderGeometry(totalH * 0.46, totalH * 0.5, totalH * 0.04, 48),
+    new THREE.MeshStandardMaterial({ color: 0x74777d, roughness: 0.92, metalness: 0.04 }),
+  );
+  apron.position.y = padTopY - totalH * 0.02;
+  g.add(apron);
+
+  /* Flame trench — dark recess under the vehicle. */
+  const trench = new THREE.Mesh(
+    new THREE.CylinderGeometry(R1 * 2.0, R1 * 2.0, totalH * 0.012, 32),
+    new THREE.MeshStandardMaterial({ color: 0x0b0c0f, roughness: 1 }),
+  );
+  trench.position.y = padTopY + 0.004;
+  g.add(trench);
+
+  /* Hazard ring painted around the trench. */
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(R1 * 2.6, R1 * 0.07, 6, 48),
+    new THREE.MeshStandardMaterial({ color: 0x9a7a1d, roughness: 0.8 }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = padTopY + 0.006;
+  g.add(ring);
+
+  /* Four lightning masts + blinking beacons. */
+  const beacons = [];
+  const mastMat = new THREE.MeshStandardMaterial({ color: 0x3c4048, roughness: 0.55, metalness: 0.5 });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const mx = Math.cos(a) * totalH * 0.38;
+    const mz = Math.sin(a) * totalH * 0.38;
+    const mastH = totalH * 0.66;
+    const mast = new THREE.Mesh(
+      new THREE.CylinderGeometry(totalH * 0.006, totalH * 0.01, mastH, 8),
+      mastMat,
+    );
+    mast.position.set(mx, padTopY + mastH / 2, mz);
+    g.add(mast);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(totalH * 0.012, 8, 8), beaconMat);
+    beacon.position.set(mx, padTopY + mastH + totalH * 0.012, mz);
+    g.add(beacon);
+    beacons.push({ mat: beaconMat, phase: i * 1.7 });
+  }
+
+  /* Service tower — column + cross-arms reaching toward the vehicle. */
+  const towerA = Math.PI * 1.15;
+  const tx = Math.cos(towerA) * totalH * 0.22;
+  const tz = Math.sin(towerA) * totalH * 0.22;
+  const towerH = totalH * 0.58;
+  const towerMat = new THREE.MeshStandardMaterial({ color: 0x565b64, roughness: 0.6, metalness: 0.45 });
+  const tower = new THREE.Mesh(
+    new THREE.BoxGeometry(totalH * 0.05, towerH, totalH * 0.05),
+    towerMat,
+  );
+  tower.position.set(tx, padTopY + towerH / 2, tz);
+  g.add(tower);
+  for (let i = 0; i < 3; i++) {
+    const armY = padTopY + towerH * (0.28 + i * 0.26);
+    const armLen = totalH * 0.22 - R1 * 0.9;
+    const arm = new THREE.Mesh(
+      new THREE.BoxGeometry(armLen, totalH * 0.014, totalH * 0.02),
+      towerMat,
+    );
+    /* Point each cross-arm from the tower toward the pad centre. */
+    arm.position.set(
+      tx - Math.cos(towerA) * armLen * 0.5,
+      armY,
+      tz - Math.sin(towerA) * armLen * 0.5,
+    );
+    arm.rotation.y = -towerA;
+    g.add(arm);
+  }
+
+  /* Hold-down arms — four clamps leaning on the base ring; their
+     pivots rotate back/down at liftoff. Local -x points inward. */
+  const armPivots = [];
+  const clampMat = new THREE.MeshStandardMaterial({ color: 0x8a4a1f, roughness: 0.5, metalness: 0.55 });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const rArm = R1 * 2.3;
+    const pivot = new THREE.Group();
+    pivot.position.set(Math.cos(a) * rArm, padTopY, Math.sin(a) * rArm);
+    pivot.rotation.y = -a;
+    const armLen = rArm - R1 * 0.92;
+    const clamp = new THREE.Mesh(
+      new THREE.BoxGeometry(armLen, R1 * 0.24, R1 * 0.3),
+      clampMat,
+    );
+    clamp.position.set(-armLen / 2, R1 * 0.12, 0);
+    pivot.add(clamp);
+    g.add(pivot);
+    armPivots.push(pivot);
+  }
+
+  return {
+    group: g,
+    /** Blink the mast beacons; `now` in ms. */
+    tickBeacons(now) {
+      for (const b of beacons) {
+        const on = Math.sin(now * 0.004 + b.phase) > 0.35;
+        b.mat.color.setRGB(on ? 1 : 0.12, on ? 0.13 : 0.02, on ? 0.13 : 0.02);
+      }
+    },
+    /** 0 = clamped, 1 = fully swung back. */
+    setArms(open) {
+      for (const p of armPivots) p.rotation.z = open * 1.15;
+    },
+  };
+}
+
+/* ---------- ascent speed-lines ("warp streaks") ----------
+ *
+ * Vertical line segments in a cylinder around the rocket that rush
+ * downward during the launch ascent — classic relative-motion trick:
+ * the rocket holds frame while the streaks sell enormous velocity.
+ * Each streak resets to the top with a new radial position when it
+ * exits the bottom of the envelope.
+ */
+function createSpeedLines(scene, totalH, count = 140) {
+  const pos = new Float32Array(count * 6);
+  const seed = [];
+  const RANGE = totalH * 5;
+  const RAD_MIN = totalH * 0.65, RAD_MAX = totalH * 2.6;
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = RAD_MIN + Math.random() * (RAD_MAX - RAD_MIN);
+    seed.push({
+      x: Math.cos(a) * r,
+      z: Math.sin(a) * r,
+      y: (Math.random() - 0.5) * RANGE * 2,
+      len: totalH * (0.2 + Math.random() * 0.5),
+      sp: 0.7 + Math.random() * 0.6,
+    });
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mtl = new THREE.LineBasicMaterial({
+    color: 0xaaccff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const lines = new THREE.LineSegments(geo, mtl);
+  lines.frustumCulled = false;
+  lines.visible = false;
+  scene.add(lines);
+
+  return {
+    /** `speed` in world units/s; `alpha` 0..1 overall visibility. */
+    update(dt, speed, alpha) {
+      mtl.opacity = alpha * 0.5;
+      lines.visible = alpha > 0.01;
+      if (!lines.visible) return;
+      for (let i = 0; i < count; i++) {
+        const s = seed[i];
+        s.y -= speed * s.sp * dt;
+        if (s.y < -RANGE) {
+          s.y += RANGE * 2;
+          const a = Math.random() * Math.PI * 2;
+          const r = RAD_MIN + Math.random() * (RAD_MAX - RAD_MIN);
+          s.x = Math.cos(a) * r; s.z = Math.sin(a) * r;
+        }
+        /* Streak length stretches with speed so faster == longer. */
+        const L = s.len * (0.4 + Math.min(speed / (RANGE * 0.4), 2.2));
+        pos[i * 6]     = s.x; pos[i * 6 + 1] = s.y;      pos[i * 6 + 2] = s.z;
+        pos[i * 6 + 3] = s.x; pos[i * 6 + 4] = s.y + L;  pos[i * 6 + 5] = s.z;
+      }
+      geo.attributes.position.needsUpdate = true;
+    },
+    dispose() { scene.remove(lines); geo.dispose(); mtl.dispose(); },
+  };
+}
+
+/* ---------- X-Ray hologram material ----------
+ *
+ * A fresnel-rim shader: faces viewed edge-on glow bright cyan, faces
+ * viewed head-on are nearly transparent — the whole vehicle reads as
+ * a volumetric engineering hologram. Additive blending means
+ * overlapping internals build up brightness, which is exactly the
+ * "densitogram" look X-ray imaging has.
+ */
+function createXRayMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor:  { value: new THREE.Color(0x36c7ff) },
+      uRim:    { value: new THREE.Color(0xbdf3ff) },
+      uPower:  { value: 2.1 },
+    },
+    vertexShader: `
+      varying vec3 vNormalW;
+      varying vec3 vViewW;
+      void main() {
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vNormalW = normalize(mat3(modelMatrix) * normal);
+        vViewW = normalize(cameraPosition - world.xyz);
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform vec3 uRim;
+      uniform float uPower;
+      varying vec3 vNormalW;
+      varying vec3 vViewW;
+      void main() {
+        float f = pow(1.0 - abs(dot(normalize(vNormalW), normalize(vViewW))), uPower);
+        vec3 col = mix(uColor * 0.10, uRim, f);
+        gl_FragColor = vec4(col, 0.045 + f * 0.85);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+}
+
 /* ---------- public entrypoint ----------
  *
  * Builds the scene inside `container` and starts the rAF render
@@ -1733,6 +2295,7 @@ export function setupRocketScene(container, data, options = {}) {
   const disassembledMidWorld = built.disassembledMidWorld;
   const explodeDollyDelta    = built.explodeDollyDelta;
   const dimMaxRadius         = built.maxRadius;
+  const launchParts          = built.launchParts;
 
   const rocket = new THREE.Group();
   rocket.add(rocketInner);
@@ -2306,6 +2869,627 @@ export function setupRocketScene(container, data, options = {}) {
   let introDone = !cinematicIntro;
   if (introDone) spinEnabled = initialAutoRotate;
 
+  /* ════════════════════════════════════════════════════════════════
+   *  LAUNCH SEQUENCE
+   *
+   *  A self-contained timeline that takes over the camera and drives
+   *  a full mission profile: countdown → ignition (plume flare,
+   *  exhaust particles, engine light, screen shake, WebAudio rumble)
+   *  → liftoff with a chase camera → skin burn-away → stage 1 & 2
+   *  separations tumbling away → fairing jettison → SECO → payload
+   *  deploy. Progress is reported to the modal through an event
+   *  callback so the HUD (countdown digits, callouts, telemetry) is
+   *  plain DOM/React on top of the canvas.
+   * ════════════════════════════════════════════════════════════════ */
+
+  const audio = createLaunchAudio();
+  const exhaust = createExhaust(scene);
+  exhaust.setScale(totalH * 0.10);
+  const speedLines = createSpeedLines(scene, totalH);
+  const smoke = createSmoke(scene);
+  smoke.setScale(totalH * 0.16);
+
+  /* Launch pad — deck sits just under stage 1's bell tip. Visible
+     only while a launch runs so the showroom stays a clean display. */
+  const padTopY = -totalH / 2 + launchParts.stages[0].exitY - totalH * 0.015;
+  const pad = buildLaunchPad(totalH, padTopY, launchParts.stages[0].R);
+  scene.add(pad.group);
+  const padCenter = new THREE.Vector3(0, padTopY + totalH * 0.012, 0);
+
+  const engineLight = new THREE.PointLight(0xff7733, 0, totalH * 3.2, 2);
+  engineLight.visible = false;
+  scene.add(engineLight);
+
+  /* Collect each powered stage's plume meshes (tagged in addNozzle)
+     with their rest-state transforms so flares are fully reversible. */
+  const stagePlumes = launchParts.stages.map(({ group }) => {
+    const list = [];
+    group.traverse((o) => {
+      if (!o.userData?.plume) return;
+      list.push({
+        mesh: o,
+        kind: o.userData.plume,
+        baseY: o.position.y,
+        baseOpacity: o.material.opacity ?? 1,
+        h: o.geometry?.parameters?.height || 1,
+      });
+    });
+    return list;
+  });
+
+  /* Mach diamonds — three flickering shock cells hanging in each
+     stage's plume, visible only while that stage burns. Parented to
+     the stage group so they travel (and jettison) with it. */
+  const stageDiamonds = launchParts.stages.map((st, i) => {
+    const inner = stagePlumes[i].find((p) => p.kind === 'inner');
+    const engLen = inner ? inner.h * 4 : st.R * 2;
+    const list = [];
+    for (let k = 0; k < 3; k++) {
+      const m = new THREE.Mesh(
+        new THREE.OctahedronGeometry(Math.max(st.R * (0.17 - k * 0.04), st.R * 0.05), 0),
+        new THREE.MeshBasicMaterial({
+          color: 0xffe2b8, transparent: true, opacity: 0,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        }),
+      );
+      m.scale.y = 2.3;
+      m.position.y = st.exitY - engLen * (0.6 + k * 0.55);
+      m.visible = false;
+      st.group.add(m);
+      list.push(m);
+    }
+    return list;
+  });
+
+  /* Flare a stage's exhaust: stretch the plume cones downward, crank
+     their opacity, swell the glow ring, and flicker the mach
+     diamonds. k = 0 rest → 1 full burn. */
+  const applyFlare = (stageIdx, k) => {
+    for (const p of stagePlumes[stageIdx]) {
+      if (p.kind === 'ring') {
+        const s = 1 + k * 0.6;
+        p.mesh.scale.set(s, s, s);
+      } else {
+        const sy = 1 + k * (p.kind === 'inner' ? 7 : 9);
+        p.mesh.scale.set(1 + k * 0.5, sy, 1 + k * 0.5);
+        p.mesh.position.y = p.baseY - ((sy - 1) * p.h) / 2;
+        p.mesh.material.opacity = p.baseOpacity + k * (p.kind === 'inner' ? 0.6 : 0.2);
+      }
+    }
+    const diamonds = stageDiamonds[stageIdx];
+    for (let d = 0; d < diamonds.length; d++) {
+      const m = diamonds[d];
+      m.visible = k > 0.12;
+      if (m.visible) {
+        m.material.opacity = k * (0.7 - d * 0.16) * (0.8 + Math.random() * 0.25);
+      }
+    }
+  };
+
+  /* Jettisoned parts get wrapped in a pivot at their own centre so
+     they can tumble around themselves while falling away. Restored
+     (reparented + transforms zeroed) by endLaunch behind the fade. */
+  const jettisoned = [];
+  const _jc = new THREE.Vector3();
+  const jettison = (group, kick = 1) => {
+    const box = new THREE.Box3().setFromObject(group);
+    box.getCenter(_jc);
+    rocketInner.worldToLocal(_jc);
+    const pivot = new THREE.Group();
+    pivot.position.copy(_jc);
+    rocketInner.add(pivot);
+    pivot.attach(group);
+    jettisoned.push({
+      pivot,
+      group,
+      vy: -totalH * (0.18 + Math.random() * 0.1) * kick,
+      vx: (Math.random() - 0.5) * totalH * 0.14 * kick,
+      vz: (Math.random() - 0.5) * totalH * 0.14 * kick,
+      wx: (Math.random() - 0.5) * 1.1,
+      wz: (Math.random() - 0.5) * 1.4,
+    });
+  };
+
+  /* Launch state. `launch.t` is seconds since the Launch click. */
+  const launch = {
+    active: false,
+    t: 0,
+    countdownShown: null,
+    fired: new Set(),
+    cb: null,
+    flareTargets: [0, 0, 0],
+    flareCurrent: [0, 0, 0],
+    activeStage: -1,
+    shakeTarget: 0,
+    shakeCurrent: 0,
+    vVis: 0,
+    sceneY: 0,
+    camAng: 0.9,
+    camPos: new THREE.Vector3(),
+    camLook: new THREE.Vector3(),
+    /* When set, the next camera frame snaps instead of lerping —
+       used for webcast-style "camera cuts" at staging events. */
+    cutPending: false,
+    /* Fake-but-plausible telemetry integrators. */
+    vel: 0,
+    alt: 0,
+    accel: 0,
+    throttle: 0,
+    telemetryClock: 0,
+  };
+
+  const emitLaunch = (evt) => { try { launch.cb && launch.cb(evt); } catch {} };
+
+  const LIFTOFF_T = 6.4;
+
+  /* Fire `fn` once when the timeline crosses `at`. */
+  const onceAt = (at, key, fn) => {
+    if (launch.t >= at && !launch.fired.has(key)) {
+      launch.fired.add(key);
+      fn();
+    }
+  };
+
+  const startLaunch = (cb) => {
+    if (launch.active || tour.active) return false;
+    if (xray.on) setXRay(false);
+    launch.active = true;
+    launch.t = 0;
+    launch.countdownShown = null;
+    launch.fired = new Set();
+    launch.cb = cb || null;
+    launch.flareTargets = [0, 0, 0];
+    launch.flareCurrent = [0, 0, 0];
+    launch.activeStage = 0;
+    launch.shakeTarget = 0;
+    launch.shakeCurrent = 0;
+    launch.vVis = 0;
+    launch.sceneY = 0;
+    launch.vel = 0; launch.alt = 0; launch.accel = 0; launch.throttle = 0;
+    launch.camPos.copy(cam.position);
+    launch.camLook.copy(ctrl.target);
+    launch.camAng = Math.atan2(cam.position.z, cam.position.x);
+
+    launch.cutPending = false;
+
+    introDone = true;   /* launching mid-intro must not resume the intro after */
+    hideTooltip();
+    ctrl.enabled = false;
+    spinEnabled = false;
+    tiltTarget = 0;               /* upright on the pad */
+    explodeTarget = 0;
+    applyCover(true);             /* launch the finished vehicle */
+    pad.group.visible = true;
+    pad.setArms(0);
+    exhaust.setFloor(padTopY + totalH * 0.006);
+    audio.setRumble(0);
+    emitLaunch({ type: 'start' });
+    return true;
+  };
+
+  /** Restore every launch-touched system. Safe to call at any time —
+   *  the modal invokes it behind a fade so the snap is invisible. */
+  const endLaunch = () => {
+    if (!launch.active) return;
+    launch.active = false;
+    for (const j of jettisoned) {
+      rocketInner.attach(j.group);
+      j.group.position.set(0, 0, 0);
+      j.group.rotation.set(0, 0, 0);
+      rocketInner.remove(j.pivot);
+    }
+    jettisoned.length = 0;
+    for (let i = 0; i < 3; i++) applyFlare(i, 0);
+    exhaust.clear();
+    exhaust.setFloor(null);
+    smoke.clear();
+    speedLines.update(0, 0, 0);
+    pad.group.visible = false;
+    pad.setArms(0);
+    engineLight.visible = false;
+    engineLight.intensity = 0;
+    audio.setRumble(0);
+    rocket.position.set(0, 0, 0);
+    rocketInner.rotation.y = 0;
+    doResetView();
+  };
+
+  const _exitWorld = new THREE.Vector3();
+  const _down = new THREE.Vector3(0, -1, 0);
+  const _shk = new THREE.Vector3();
+
+  const launchTick = (dt) => {
+    launch.t += dt;
+    const t = launch.t;
+
+    /* ── countdown 5…1 ── */
+    if (t < 5) {
+      const n = 5 - Math.floor(t);
+      if (n !== launch.countdownShown) {
+        launch.countdownShown = n;
+        audio.beep(false);
+        emitLaunch({ type: 'countdown', n });
+      }
+    }
+
+    /* Random webcast-style camera cut. */
+    const cutCamera = () => {
+      launch.camAng += (Math.random() > 0.5 ? 1 : -1) * (1.1 + Math.random() * 1.2);
+      launch.cutPending = true;
+    };
+
+    onceAt(3.4, 'rumble-pre', () => { launch.shakeTarget = 0.15; });
+    onceAt(5, 'ignition', () => {
+      audio.beep(true);
+      emitLaunch({ type: 'countdown', n: 0 });
+      emitLaunch({ type: 'callout', label: 'IGNITION', sub: 'Main engine start' });
+      emitLaunch({ type: 'flash' });
+      launch.flareTargets[0] = 1;
+      launch.shakeTarget = 0.8;
+      engineLight.visible = true;
+    });
+    onceAt(LIFTOFF_T, 'liftoff', () => {
+      emitLaunch({ type: 'callout', label: 'LIFTOFF', sub: 'Vehicle has cleared the tower' });
+      launch.shakeTarget = 1.0;
+    });
+    onceAt(12.5, 'maxq', () => {
+      emitLaunch({ type: 'callout', label: 'MAX-Q', sub: 'Peak aerodynamic pressure' });
+      launch.shakeTarget = 0.9;
+    });
+    onceAt(13.5, 'skin', () => { coverTarget = 1; pendingCover = false; });
+    onceAt(14.5, 'shake-down', () => { launch.shakeTarget = 0.4; });
+    onceAt(16, 'meco', () => {
+      emitLaunch({ type: 'callout', label: 'MECO', sub: 'Stage 1 separation confirmed' });
+      launch.flareTargets[0] = 0;
+      jettison(launchParts.stages[0].group, 1.15);
+      jettison(launchParts.inter12, 0.9);
+      launch.activeStage = -1;
+      audio.burst();
+      launch.shakeTarget = 0.5;
+      cutCamera();
+    });
+    onceAt(16.8, 's2-ign', () => {
+      emitLaunch({ type: 'callout', label: 'STAGE 2 IGNITION', sub: 'Vacuum engine burn' });
+      launch.flareTargets[1] = 1;
+      launch.activeStage = 1;
+      launch.shakeTarget = 0.35;
+    });
+    onceAt(21.5, 's2-sep', () => {
+      emitLaunch({ type: 'callout', label: 'STAGE 2 SEPARATION', sub: 'Second stage away' });
+      launch.flareTargets[1] = 0;
+      jettison(launchParts.stages[1].group, 1);
+      jettison(launchParts.inter23, 0.85);
+      launch.activeStage = -1;
+      audio.burst();
+      cutCamera();
+    });
+    onceAt(22.3, 's3-ign', () => {
+      emitLaunch({ type: 'callout', label: 'STAGE 3 IGNITION', sub: 'Kick stage burn' });
+      launch.flareTargets[2] = 1;
+      launch.activeStage = 2;
+      launch.shakeTarget = 0.25;
+    });
+    onceAt(24.5, 'fairing', () => {
+      emitLaunch({ type: 'callout', label: 'FAIRING JETTISON', sub: 'Payload exposed' });
+      jettison(launchParts.fairing, 0.7);
+      audio.burst();
+      cutCamera();
+    });
+    onceAt(29, 'seco', () => {
+      emitLaunch({ type: 'callout', label: 'SECO', sub: 'Orbital velocity achieved' });
+      launch.flareTargets[2] = 0;
+      launch.activeStage = -1;
+      launch.shakeTarget = 0;
+    });
+    onceAt(31, 'deploy', () => {
+      emitLaunch({ type: 'callout', label: 'PAYLOAD DEPLOYED', sub: 'Mission nominal — congratulations' });
+      /* Spent kick stage drifts away so the payload floats alone. */
+      jettison(launchParts.stages[2].group, 0.35);
+      audio.burst();
+    });
+    onceAt(34.5, 'done', () => { emitLaunch({ type: 'done' }); });
+
+    /* ── flare lerps + exhaust + light ── */
+    let flareMax = 0;
+    for (let i = 0; i < 3; i++) {
+      launch.flareCurrent[i] += (launch.flareTargets[i] - launch.flareCurrent[i]) * (launch.flareTargets[i] > launch.flareCurrent[i] ? 0.14 : 0.1);
+      applyFlare(i, launch.flareCurrent[i]);
+      flareMax = Math.max(flareMax, launch.flareCurrent[i]);
+    }
+    const act = launch.activeStage;
+    if (act >= 0 && launch.flareCurrent[act] > 0.05) {
+      const st = launchParts.stages[act];
+      _exitWorld.set(0, st.exitY + st.group.position.y, 0);
+      rocketInner.localToWorld(_exitWorld);
+      engineLight.position.copy(_exitWorld);
+      engineLight.intensity = launch.flareCurrent[act] * totalH * 7;
+      engineLight.visible = true;
+      const n = Math.round(140 * dt * launch.flareCurrent[act] * (act === 0 ? 1 : 0.55));
+      exhaust.spawn(_exitWorld, _down, n, totalH * 0.9, st.R * 1.1);
+    } else {
+      engineLight.intensity *= (1 - 3 * dt);
+      if (engineLight.intensity < 0.01) engineLight.visible = false;
+    }
+    exhaust.update(dt);
+    audio.setRumble(flareMax * 0.85 + launch.shakeCurrent * 0.15);
+
+    /* ── pad life: blinking beacons, hold-down arms swinging back at
+          liftoff, and the wall of trench smoke during first burn ── */
+    pad.tickBeacons(performance.now());
+    const armOpen = Math.max(0, Math.min(1, (t - (LIFTOFF_T - 0.3)) / 0.9));
+    pad.setArms(armOpen * armOpen * (3 - 2 * armOpen));   /* smoothstep */
+    if (t >= 5 && t < 11.5 && launch.flareCurrent[0] > 0.1) {
+      smoke.spawn(padCenter, Math.round(110 * dt * launch.flareCurrent[0]) + 1, totalH * 0.5);
+    }
+    smoke.update(dt);
+
+    /* ── visual ascent (rocket climbs, then holds while speed lines
+          carry the sense of velocity) ── */
+    if (t > LIFTOFF_T) {
+      const ta = t - LIFTOFF_T;
+      const ramp = Math.min(1, ta / 3);
+      launch.vVis = Math.min(launch.vVis + totalH * 0.10 * ramp * ramp * dt, totalH * 0.5);
+      launch.sceneY = Math.min(launch.sceneY + launch.vVis * dt, totalH * 1.25);
+      rocket.position.y = launch.sceneY;
+
+      const slAlpha = Math.max(0, Math.min(1, (ta - 3.5) / 3.5)) * (t > 30 ? Math.max(0, 1 - (t - 30) / 3) : 1);
+      speedLines.update(dt, launch.vVis * 2.4, slAlpha);
+    }
+
+    /* ── jettisoned parts fall + tumble away ── */
+    for (const j of jettisoned) {
+      j.vy -= totalH * 0.16 * dt;
+      j.pivot.position.y += j.vy * dt;
+      j.pivot.position.x += j.vx * dt;
+      j.pivot.position.z += j.vz * dt;
+      j.pivot.rotation.x += j.wx * dt;
+      j.pivot.rotation.z += j.wz * dt;
+    }
+
+    /* ── telemetry (plausible numbers, ~10 Hz to the HUD) ──
+       The visual timeline is ~35 s but a real ascent takes minutes,
+       so the physics integrate on a compressed mission clock
+       (TIME_SCALE× real time). That lands the numbers in credible
+       territory — MECO near T+2 min at ~2.5 km/s and ~100 km. */
+    const TIME_SCALE = 12;
+    let a = 0, thr = 0;
+    if (t >= LIFTOFF_T && t < 16)      { a = 14 + 1.9 * (t - LIFTOFF_T); thr = 100; }
+    else if (t >= 16 && t < 16.8)      { a = -9.0; thr = 0; }
+    else if (t >= 16.8 && t < 21.5)    { a = 24;  thr = 98; }
+    else if (t >= 21.5 && t < 22.3)    { a = -8.5; thr = 0; }
+    else if (t >= 22.3 && t < 29)      { a = 15;  thr = 92; }
+    if (t >= LIFTOFF_T) {
+      launch.vel = Math.max(0, launch.vel + a * dt * TIME_SCALE);
+      launch.alt += launch.vel * dt * TIME_SCALE;
+    }
+    launch.accel = a; launch.throttle = thr;
+    launch.telemetryClock += dt;
+    if (launch.telemetryClock > 0.1) {
+      launch.telemetryClock = 0;
+      emitLaunch({
+        type: 'telemetry',
+        tSign: t < LIFTOFF_T ? '-' : '+',
+        tAbs: t < LIFTOFF_T ? LIFTOFF_T - t : (t - LIFTOFF_T) * TIME_SCALE,
+        alt: launch.alt,
+        vel: launch.vel,
+        mach: launch.vel / (launch.alt < 11000 ? 340 : 296),
+        throttle: thr,
+        g: thr > 0 ? (a + 9.81) / 9.81 : 0,
+      });
+    }
+
+    /* ── camera: pad view during countdown, chase cam during ascent ── */
+    launch.camAng += 0.055 * dt;
+    let px, py, pz, lx, ly, lz;
+    if (t < LIFTOFF_T) {
+      const r = totalH * 1.15;
+      px = Math.cos(launch.camAng) * r;
+      pz = Math.sin(launch.camAng) * r;
+      py = -totalH * 0.24;
+      lx = 0; ly = -totalH * 0.12; lz = 0;
+    } else {
+      const climb = rocket.position.y;
+      const r = totalH * (1.35 - 0.25 * Math.min(1, (t - LIFTOFF_T) / 14));
+      px = Math.cos(launch.camAng) * r;
+      pz = Math.sin(launch.camAng) * r;
+      py = climb * 0.9 - totalH * 0.12;
+      lx = 0; ly = climb + totalH * 0.06; lz = 0;
+    }
+    if (launch.cutPending) {
+      /* Hard cut — snap to the new angle like a broadcast camera
+         switch instead of swinging the whole way around. */
+      launch.cutPending = false;
+      launch.camPos.set(px, py, pz);
+      launch.camLook.set(lx, ly, lz);
+    } else {
+      const cl = 1 - Math.pow(0.04, dt);   /* frame-rate independent lerp */
+      launch.camPos.x += (px - launch.camPos.x) * cl;
+      launch.camPos.y += (py - launch.camPos.y) * cl;
+      launch.camPos.z += (pz - launch.camPos.z) * cl;
+      launch.camLook.x += (lx - launch.camLook.x) * cl;
+      launch.camLook.y += (ly - launch.camLook.y) * cl;
+      launch.camLook.z += (lz - launch.camLook.z) * cl;
+    }
+
+    /* Screen shake — random jitter scaled by the current intensity. */
+    launch.shakeCurrent += (launch.shakeTarget - launch.shakeCurrent) * 0.06;
+    _shk.set(
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2,
+    ).multiplyScalar(launch.shakeCurrent * totalH * 0.0065);
+
+    cam.position.copy(launch.camPos).add(_shk);
+    cam.lookAt(launch.camLook);
+  };
+
+  /* ════════════════════════════════════════════════════════════════
+   *  CINEMATIC TOUR
+   *
+   *  A ~31 s choreographed flight: orbit the finished vehicle →
+   *  dissolve the skin → climb the internals bottom-to-top →
+   *  disassemble in motion → orbit the exploded stack → reassemble
+   *  and land back at the showroom framing. Captions stream to the
+   *  modal for the letterboxed film look. Cancel by clicking the
+   *  canvas or via the modal's Skip button.
+   * ════════════════════════════════════════════════════════════════ */
+
+  const tour = {
+    active: false,
+    t: 0,
+    fired: new Set(),
+    cb: null,
+    ang: 0,
+    camPos: new THREE.Vector3(),
+    camLook: new THREE.Vector3(),
+  };
+  const TOUR_LEN = 31;
+
+  const emitTour = (evt) => { try { tour.cb && tour.cb(evt); } catch {} };
+  const tourOnce = (at, key, fn) => {
+    if (tour.t >= at && !tour.fired.has(key)) { tour.fired.add(key); fn(); }
+  };
+
+  const startTour = (cb) => {
+    if (launch.active || tour.active) return false;
+    if (xray.on) setXRay(false);
+    tour.active = true;
+    tour.t = 0;
+    tour.fired = new Set();
+    tour.cb = cb || null;
+    tour.ang = Math.atan2(cam.position.z, cam.position.x);
+    tour.camPos.copy(cam.position);
+    tour.camLook.copy(ctrl.target);
+    introDone = true;
+    hideTooltip();
+    ctrl.enabled = false;
+    spinEnabled = false;
+    tiltTarget = 0;
+    explodeTarget = 0;
+    applyCover(true);
+    emitTour({ type: 'start' });
+    return true;
+  };
+
+  const endTour = (completed) => {
+    if (!tour.active) return;
+    tour.active = false;
+    emitTour({ type: completed ? 'done' : 'cancelled' });
+    doResetView();
+  };
+
+  const tourTick = (dt) => {
+    tour.t += dt;
+    const t = tour.t;
+
+    tourOnce(0.3,  'c1', () => emitTour({ type: 'caption', text: 'Launch vehicle — outer mold line' }));
+    tourOnce(6.5,  'c2', () => { coverTarget = 1; pendingCover = false; emitTour({ type: 'caption', text: 'Structural reveal' }); });
+    tourOnce(9.5,  'c3', () => emitTour({ type: 'caption', text: 'Stage 1 — propulsion & propellant' }));
+    tourOnce(13,   'c4', () => emitTour({ type: 'caption', text: 'Stage 2 & interstage hardware' }));
+    tourOnce(15.5, 'c5', () => emitTour({ type: 'caption', text: 'Payload & fairing' }));
+    tourOnce(17,   'c6', () => { explodeTarget = 1; emitTour({ type: 'caption', text: 'Exploded configuration' }); });
+    tourOnce(25,   'c7', () => { applyCover(true); emitTour({ type: 'caption', text: 'Reassembly' }); });
+    tourOnce(TOUR_LEN, 'end', () => endTour(true));
+    if (!tour.active) return;
+
+    /* Camera choreography — piecewise orbit/climb, smoothed by the
+       same frame-rate-independent lerp the launch camera uses. */
+    let px, py, pz, lx, ly, lz;
+    if (t < 9) {
+      /* Wide hero orbit. */
+      tour.ang += 0.35 * dt;
+      const r = totalH * (1.45 - 0.04 * t);
+      px = Math.cos(tour.ang) * r; pz = Math.sin(tour.ang) * r;
+      py = totalH * (0.05 + 0.08 * Math.sin(t * 0.35));
+      lx = 0; ly = 0; lz = 0;
+    } else if (t < 17) {
+      /* Close climb along the internals, bottom → top. */
+      tour.ang += 0.22 * dt;
+      const k = (t - 9) / 8;
+      const h = -totalH * 0.45 + k * totalH * 0.9;
+      const r = Math.max(dimMaxRadius * 4.2, totalH * 0.34);
+      px = Math.cos(tour.ang) * r; pz = Math.sin(tour.ang) * r;
+      py = h + totalH * 0.04;
+      lx = 0; ly = h; lz = 0;
+    } else if (t < 25) {
+      /* Pull back and orbit the exploded stack. */
+      tour.ang += 0.18 * dt;
+      const k = Math.min(1, (t - 17) / 3);
+      const r = totalH * (0.9 + k * 1.35);
+      px = Math.cos(tour.ang) * r; pz = Math.sin(tour.ang) * r;
+      py = disassembledMidWorld * explodeCurrent + totalH * 0.12;
+      lx = 0; ly = disassembledMidWorld * explodeCurrent; lz = 0;
+    } else {
+      /* Return to the showroom frame (tilting back to horizontal). */
+      tiltTarget = -Math.PI / 2;
+      px = finalPos.x; py = finalPos.y; pz = finalPos.z;
+      lx = totalH * 0.02; ly = 0; lz = 0;
+    }
+    const cl = 1 - Math.pow(0.035, dt);
+    tour.camPos.x += (px - tour.camPos.x) * cl;
+    tour.camPos.y += (py - tour.camPos.y) * cl;
+    tour.camPos.z += (pz - tour.camPos.z) * cl;
+    tour.camLook.x += (lx - tour.camLook.x) * cl;
+    tour.camLook.y += (ly - tour.camLook.y) * cl;
+    tour.camLook.z += (lz - tour.camLook.z) * cl;
+    cam.position.copy(tour.camPos);
+    cam.lookAt(tour.camLook);
+  };
+
+  /* Clicking the canvas cancels a running tour (a "let me drive"
+     escape hatch), matching how video players yield to interaction. */
+  const onTourCancelPointer = () => { if (tour.active) endTour(false); };
+  ren.domElement.addEventListener('pointerdown', onTourCancelPointer);
+
+  /* ════════════════════════════════════════════════════════════════
+   *  X-RAY MODE — swap every internal PBR material for a shared
+   *  fresnel hologram shader. Fully reversible; the original
+   *  materials are cached on first toggle.
+   * ════════════════════════════════════════════════════════════════ */
+
+  const xray = { on: false, swaps: null, mat: null };
+  coverGroup?.traverse((o) => { o.userData.coverMember = true; });
+
+  const setXRay = (on) => {
+    if (on === xray.on) return xray.on;
+    if (on) {
+      if (!xray.mat) xray.mat = createXRayMaterial();
+      if (!xray.swaps) {
+        xray.swaps = [];
+        rocketInner.traverse((o) => {
+          if (!o.isMesh) return;
+          if (o.userData.coverMember || o.userData.plume) return;
+          if (!o.material || !o.material.isMeshPhysicalMaterial) return;
+          xray.swaps.push({ mesh: o, orig: o.material });
+        });
+      }
+      for (const s of xray.swaps) s.mesh.material = xray.mat;
+      applyCover(false);
+    } else {
+      if (xray.swaps) for (const s of xray.swaps) s.mesh.material = s.orig;
+    }
+    xray.on = on;
+    return xray.on;
+  };
+
+  /* Shared full-state reset used by resetView / endLaunch / endTour. */
+  const doResetView = () => {
+    setXRay(false);
+    tiltTarget = -Math.PI / 2;
+    focusTarget = totalH * 0.02;
+    explodeTarget = 0;
+    coverTarget = 0;
+    pendingCover = false;
+    lastDolly = 1;
+    panOffset.set(0, 0, 0);
+    rocketInner.rotation.y = 0;
+    ctrl.target.set(totalH * 0.02, 0, 0);
+    cam.position.set(finalPos.x, finalPos.y, finalPos.z);
+    cam.lookAt(totalH * 0.02, 0, 0);
+    ctrl.enabled = true;
+    spinEnabled = true;
+  };
+
   /* Resize observer. */
   const onResize = () => {
     const cw = container.clientWidth, ch = container.clientHeight;
@@ -2336,7 +3520,8 @@ export function setupRocketScene(container, data, options = {}) {
 
     /* Cinematic intro lerp. Smoothstep (3t² - 2t³) for that satisfying
        deceleration into the final framing. */
-    if (!introDone) {
+    const sequenceActive = launch.active || tour.active;
+    if (!introDone && !sequenceActive) {
       const t = Math.min(1, (now - introStart) / introDuration);
       const e = t * t * (3 - 2 * t);
       cam.position.set(
@@ -2369,10 +3554,13 @@ export function setupRocketScene(container, data, options = {}) {
     spinCurrent += (targetSpin - spinCurrent) * 0.05;
     rocketInner.rotation.y += spinCurrent * dt;
 
-    /* Explode lerp. */
+    /* Explode lerp. Parts the launch sequence has jettisoned are
+       reparented under tumble pivots — skip them so this per-frame
+       write doesn't yank them back onto the stack. */
     const explodePrev = explodeCurrent;
     explodeCurrent += (explodeTarget - explodeCurrent) * 0.08;
     for (const e of explodeTargets) {
+      if (e.group.parent !== rocketInner) continue;
       e.group.position.y = e.offset * explodeCurrent;
     }
 
@@ -2405,6 +3593,16 @@ export function setupRocketScene(container, data, options = {}) {
       hideTooltip();
     }
 
+    /* Launch / tour timelines own the camera completely while they
+       run — the orbit-controls target lerp + explode dolly below
+       would fight their per-frame camera writes, so both are gated
+       behind `sequenceActive`. */
+    if (launch.active) {
+      launchTick(dt);
+    } else if (tour.active) {
+      tourTick(dt);
+    }
+
     /* Focus lerp + disassemble center shift.
        When the rocket is disassembled, stage 1 stays grounded while
        the fairing flies far above the payload (along the rocket's
@@ -2416,33 +3614,35 @@ export function setupRocketScene(container, data, options = {}) {
        after a Z-rotation by `tiltCurrent`: rotating (0,1,0) by Z=θ
        gives (-sin θ, cos θ, 0). The user's focusSlider stacks onto
        the explode shift, both interpreted as "long-axis offset". */
-    const tiltSin = Math.sin(tiltCurrent);
-    const tiltCos = Math.cos(tiltCurrent);
-    const longAxisOffset = focusTarget + disassembledMidWorld * explodeCurrent;
-    /* `panOffset` rides on top of the computed long-axis target so a
-       manually-panned view persists instead of being lerped back. */
-    const targetXdesired = longAxisOffset * (-tiltSin) + panOffset.x;
-    const targetYdesired = longAxisOffset * tiltCos + panOffset.y;
-    const targetZdesired = panOffset.z;
-    ctrl.target.x += (targetXdesired - ctrl.target.x) * 0.08;
-    ctrl.target.y += (targetYdesired - ctrl.target.y) * 0.08;
-    ctrl.target.z += (targetZdesired - ctrl.target.z) * 0.08;
+    if (!sequenceActive) {
+      const tiltSin = Math.sin(tiltCurrent);
+      const tiltCos = Math.cos(tiltCurrent);
+      const longAxisOffset = focusTarget + disassembledMidWorld * explodeCurrent;
+      /* `panOffset` rides on top of the computed long-axis target so a
+         manually-panned view persists instead of being lerped back. */
+      const targetXdesired = longAxisOffset * (-tiltSin) + panOffset.x;
+      const targetYdesired = longAxisOffset * tiltCos + panOffset.y;
+      const targetZdesired = panOffset.z;
+      ctrl.target.x += (targetXdesired - ctrl.target.x) * 0.08;
+      ctrl.target.y += (targetYdesired - ctrl.target.y) * 0.08;
+      ctrl.target.z += (targetZdesired - ctrl.target.z) * 0.08;
 
-    /* Dolly the camera out proportionally to the disassemble
-       progress. Without this, the taller exploded stack spills out
-       of frame and feels cramped. We scale the camera's offset from
-       the look-at target by `desiredDolly / lastDolly` each frame —
-       the user's manual zoom is preserved, we only add to it.
-       Gated on `introDone` so the cinematic intro's per-frame
-       `cam.position.set()` doesn't fight with the dolly's own
-       per-frame writes during the opening dolly-in. */
-    if (introDone) {
-      const desiredDolly = 1 + explodeDollyDelta * explodeCurrent;
-      if (Math.abs(desiredDolly - lastDolly) > 1e-4) {
-        const dollyOffset = cam.position.clone().sub(ctrl.target);
-        dollyOffset.multiplyScalar(desiredDolly / lastDolly);
-        cam.position.copy(ctrl.target).add(dollyOffset);
-        lastDolly = desiredDolly;
+      /* Dolly the camera out proportionally to the disassemble
+         progress. Without this, the taller exploded stack spills out
+         of frame and feels cramped. We scale the camera's offset from
+         the look-at target by `desiredDolly / lastDolly` each frame —
+         the user's manual zoom is preserved, we only add to it.
+         Gated on `introDone` so the cinematic intro's per-frame
+         `cam.position.set()` doesn't fight with the dolly's own
+         per-frame writes during the opening dolly-in. */
+      if (introDone) {
+        const desiredDolly = 1 + explodeDollyDelta * explodeCurrent;
+        if (Math.abs(desiredDolly - lastDolly) > 1e-4) {
+          const dollyOffset = cam.position.clone().sub(ctrl.target);
+          dollyOffset.multiplyScalar(desiredDolly / lastDolly);
+          cam.position.copy(ctrl.target).add(dollyOffset);
+          lastDolly = desiredDolly;
+        }
       }
     }
 
@@ -2450,8 +3650,12 @@ export function setupRocketScene(container, data, options = {}) {
        multiplier reaches 0 at explode = 0.20, so by the time the
        stages have separated visibly the shell + its stiffeners +
        access panels have already disappeared and don't read as
-       phantom cylinders between the parts. */
-    const shellMul = Math.max(0, 1 - explodeCurrent * 5);
+       phantom cylinders between the parts. During a launch the shell
+       instead fades with the skin burn-away — otherwise it would be
+       left hanging as a ghost envelope when the stages jettison. */
+    const shellMul = launch.active
+      ? Math.min(Math.max(0, 1 - explodeCurrent * 5), 1 - coverCurrent)
+      : Math.max(0, 1 - explodeCurrent * 5);
     for (const f of fadeTargets) {
       f.mat.opacity = f.baseOpacity * shellMul;
     }
@@ -2461,7 +3665,10 @@ export function setupRocketScene(container, data, options = {}) {
        state computed above this frame. */
     updateDimLines();
 
-    ctrl.update();
+    /* OrbitControls.update() re-asserts its own camera orientation
+       from its target, which would undo the launch/tour cameras'
+       lookAt — skip it while a sequence is driving. */
+    if (!sequenceActive) ctrl.update();
     composer.render();
   };
   tick();
@@ -2540,30 +3747,65 @@ export function setupRocketScene(container, data, options = {}) {
       coverSetColorMode?.(mode);
     },
     /** Reset the camera to the cinematic landing position, plus
-     *  unhide everything (cancel explode / focus). Tilt resets to
-     *  the horizontal default so "Reset" lands the user back at the
+     *  unhide everything (cancel explode / focus / X-ray, and any
+     *  running launch or tour sequence). Tilt resets to the
+     *  horizontal default so "Reset" lands the user back at the
      *  same showroom framing they started with. */
     resetView() {
-      tiltTarget = -Math.PI / 2;
-      focusTarget = totalH * 0.02;
-      explodeTarget = 0;
-      coverTarget = 0;
-      pendingCover = false;
-      lastDolly = 1;
-      panOffset.set(0, 0, 0);
-      rocketInner.rotation.y = 0;
-      ctrl.target.set(totalH * 0.02, 0, 0);
-      cam.position.set(finalPos.x, finalPos.y, finalPos.z);
-      cam.lookAt(totalH * 0.02, 0, 0);
-      spinEnabled = true;
+      if (launch.active) { endLaunch(); return; }
+      if (tour.active)   { endTour(false); return; }
+      doResetView();
     },
+    /** Kick off the full launch sequence. `cb` receives timeline
+     *  events: {type:'countdown'|'callout'|'telemetry'|'done'|'start'}.
+     *  Returns false if another sequence is already running. */
+    startLaunch(cb) { return startLaunch(cb); },
+    /** Abort a running launch and restore the showroom state. The
+     *  modal fades to black around this call so the snap is hidden. */
+    abortLaunch() { endLaunch(); },
+    /** Play the ~31 s cinematic tour. `cb` receives
+     *  {type:'caption'|'done'|'cancelled'|'start'} events. */
+    startTour(cb) { return startTour(cb); },
+    /** Cancel a running tour (also triggered by clicking the canvas). */
+    skipTour() { endTour(false); },
+    /** Toggle the X-ray hologram view. Returns the new state. */
+    toggleXRay() {
+      if (launch.active || tour.active) return xray.on;
+      const next = setXRay(!xray.on);
+      /* Restoring normal view re-forms the cover only if the user had
+         it on before? Simpler contract: X-ray off returns to the
+         internals view (cover stays dissolved) — one less surprise. */
+      return next;
+    },
+    /** Mute / unmute the launch audio. Returns the new muted state. */
+    toggleAudio() {
+      audio.setMuted(!audio.isMuted());
+      return audio.isMuted();
+    },
+    /** Capture the current frame as a PNG data-URL (composited with
+     *  bloom). Rendered synchronously right before capture so the
+     *  drawing buffer is guaranteed fresh. */
+    snapshot() {
+      composer.render();
+      return ren.domElement.toDataURL('image/png');
+    },
+    /** Whether a camera-owning sequence (launch/tour) is running. */
+    isSequenceActive() { return launch.active || tour.active; },
     dispose() {
       running = false;
+      launch.active = false;
+      tour.active = false;
+      audio.dispose();
+      exhaust.dispose();
+      smoke.dispose();
+      speedLines.dispose();
+      if (xray.mat) xray.mat.dispose();
       if (raf) cancelAnimationFrame(raf);
       if (resumeTimer) clearTimeout(resumeTimer);
       if (hoverTimer)  clearTimeout(hoverTimer);
       window.removeEventListener('resize', onResize);
       if (ro) ro.disconnect();
+      ren.domElement.removeEventListener('pointerdown', onTourCancelPointer);
       ren.domElement.removeEventListener('pointerdown', onPointerDown);
       ren.domElement.removeEventListener('pointerup',   onPointerUp);
       ren.domElement.removeEventListener('mousemove',  onMouseMove);

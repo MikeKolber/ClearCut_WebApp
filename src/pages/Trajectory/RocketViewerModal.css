@@ -731,6 +731,302 @@
   transition: opacity 120ms ease;
 }
 
+/* ═══ LAUNCH button — mission red, the marquee CTA ═════════════ */
+
+.RVM-toolbtn-launch {
+  color: #ffb0a6;
+  border-color: rgba(255, 110, 90, 0.65);
+  background:
+    linear-gradient(180deg,
+      rgba(190, 45, 30, 0.60) 0%,
+      rgba(115, 22, 14, 0.60) 100%);
+  box-shadow:
+    0 12px 34px -10px rgba(255, 80, 50, 0.45),
+    0 1px 0 rgba(255, 190, 170, 0.20) inset;
+  /* Slow breathing glow so the eye keeps coming back to it. */
+  animation: rvm-launch-pulse 2.6s ease-in-out infinite;
+}
+.RVM-toolbtn-launch:hover {
+  color: #ffd6cf;
+  border-color: rgba(255, 130, 105, 0.95);
+  background:
+    linear-gradient(180deg,
+      rgba(225, 60, 40, 0.75) 0%,
+      rgba(140, 30, 18, 0.75) 100%);
+  box-shadow:
+    0 16px 44px -10px rgba(255, 95, 60, 0.60),
+    0 1px 0 rgba(255, 205, 185, 0.25) inset;
+  animation-play-state: paused;
+}
+@keyframes rvm-launch-pulse {
+  0%, 100% { box-shadow: 0 12px 34px -10px rgba(255, 80, 50, 0.35),
+                         0 1px 0 rgba(255, 190, 170, 0.20) inset; }
+  50%      { box-shadow: 0 12px 44px -6px rgba(255, 90, 55, 0.65),
+                         0 1px 0 rgba(255, 190, 170, 0.20) inset; }
+}
+
+/* X-Ray engaged state — hologram cyan. */
+.RVM-toolbtn--xray-on {
+  color: #9be8ff;
+  border-color: rgba(90, 210, 255, 0.6);
+  background: rgba(60, 190, 255, 0.12);
+  box-shadow: 0 0 18px -4px rgba(80, 200, 255, 0.45);
+}
+
+/* ═══ Launch HUD ═══════════════════════════════════════════════ */
+
+/* Big countdown digits — dead center, one pop-in per number. */
+.RVM-countdown {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 7;
+  pointer-events: none;
+  font-size: 128px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #f4f7fc;
+  text-shadow:
+    0 0 34px rgba(140, 190, 255, 0.55),
+    0 0 90px rgba(80, 140, 255, 0.35);
+  animation: rvm-count-pop 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+  font-variant-numeric: tabular-nums;
+}
+.RVM-countdown-t {
+  font-size: 0.42em;
+  vertical-align: 0.5em;
+  margin-right: 10px;
+  color: rgba(190, 210, 240, 0.75);
+}
+@keyframes rvm-count-pop {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+  18%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  78%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+}
+
+/* Mission-event callout — slides up, holds, fades. */
+.RVM-callout {
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  pointer-events: none;
+  text-align: center;
+  animation: rvm-callout 3.4s ease both;
+}
+.RVM-callout-label {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI',
+    system-ui, sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: #fff;
+  text-shadow:
+    0 0 26px rgba(255, 170, 90, 0.55),
+    0 2px 18px rgba(0, 0, 0, 0.8);
+  text-transform: uppercase;
+}
+.RVM-callout-sub {
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 2.4px;
+  text-transform: uppercase;
+  color: rgba(210, 220, 240, 0.75);
+}
+@keyframes rvm-callout {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(16px); }
+  10%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+  82%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}
+
+/* Telemetry strip — bottom center, console-style cells. */
+.RVM-telemetry {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  gap: 0;
+  padding: 10px 6px;
+  background: rgba(6, 9, 16, 0.82);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(140, 190, 230, 0.22);
+  border-radius: 12px;
+  box-shadow:
+    0 18px 48px -14px rgba(0, 0, 0, 0.8),
+    0 0 30px -8px rgba(80, 150, 255, 0.25);
+}
+.RVM-tele-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 92px;
+  padding: 2px 18px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+.RVM-tele-cell:last-child { border-right: none; }
+.RVM-tele-key {
+  font-size: 9px;
+  letter-spacing: 1.6px;
+  color: rgba(150, 175, 210, 0.6);
+}
+.RVM-tele-val {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: #e9f2fd;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 14px rgba(120, 180, 255, 0.35);
+  white-space: nowrap;
+}
+.RVM-tele-clock .RVM-tele-val { color: #ffd58a; }
+
+/* Sequence controls (abort / mute / skip) — top-right, replaces the
+   nav cluster while a sequence runs. */
+.RVM-seq-controls {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 8;
+  display: flex;
+  gap: 8px;
+}
+.RVM-toolbtn-abort {
+  color: #ffb0a6;
+  border-color: rgba(255, 110, 90, 0.5);
+  background: rgba(120, 25, 15, 0.45);
+}
+.RVM-toolbtn-abort:hover {
+  color: #ffd6cf;
+  border-color: rgba(255, 130, 105, 0.9);
+  background: rgba(190, 45, 30, 0.6);
+}
+
+/* "LIVE" webcast chip — top-left while the launch runs. */
+.RVM-live {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: rgba(235, 240, 250, 0.9);
+  background: rgba(6, 9, 16, 0.78);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 90, 70, 0.35);
+  border-radius: 8px;
+  pointer-events: none;
+}
+.RVM-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 10px rgba(255, 60, 45, 0.9);
+  animation: rvm-live-blink 1.4s ease-in-out infinite;
+}
+@keyframes rvm-live-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+
+/* Ignition flash — one white pop that decays fast. */
+.RVM-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  pointer-events: none;
+  z-index: 11;
+  animation: rvm-flash 950ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes rvm-flash {
+  0%   { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+
+/* ═══ Tour letterbox + captions ════════════════════════════════ */
+
+.RVM-letterbox {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 9%;
+  background: #000;
+  z-index: 6;
+  pointer-events: none;
+  animation: rvm-letterbox-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.RVM-letterbox--top {
+  top: 0;
+  transform-origin: top;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.RVM-letterbox--bottom { bottom: 0; transform-origin: bottom; }
+
+.RVM-tour-title {
+  font-size: 10px;
+  letter-spacing: 3.5px;
+  color: rgba(200, 212, 232, 0.55);
+  text-transform: uppercase;
+}
+@keyframes rvm-letterbox-in {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+.RVM-tour-caption {
+  position: absolute;
+  bottom: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  pointer-events: none;
+  font-size: 13px;
+  letter-spacing: 3.2px;
+  text-transform: uppercase;
+  color: rgba(235, 242, 252, 0.92);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.9);
+  animation: rvm-caption 4.5s ease both;
+  white-space: nowrap;
+}
+@keyframes rvm-caption {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  8%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  85%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ═══ Fade-to-black (sequence teardown mask) ═══════════════════ */
+
+.RVM-fade {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 560ms ease;
+  z-index: 12;
+}
+.RVM-fade--on {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* ─── Mobile fallback — collapse overlays so the canvas isn't
        covered on tiny screens. */
 @media (max-width: 600px) {
