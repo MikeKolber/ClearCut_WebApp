@@ -1,6 +1,6 @@
 /**
- * Three.js rocket structure viewer - cinematic port of the desktop's
- * `core/Trajectory Simulation/src/sketch/generate_3d.py` HTML template.
+ * Three.js rocket structure viewer — renders the geometry that
+ * `generate_sketch.py` writes to `rocket_data.json` after a sim run.
  *
  * Heavy three.js + post-processing imports load only when this module
  * is dynamically `import()`-ed from the modal, so users who never open
