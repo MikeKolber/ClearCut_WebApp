@@ -57,7 +57,6 @@ const C = {
   fairing: 0xDCDCE6,
   wall:    0xCCCCD0,
   nozzle:  0x1a1a1a,
-  fin:     0x666666,
   ring:    0x222228,
   nose:    0xE0E0E8,
   cover:   0xE8E8EC,   // outer aeroshell "operational white" (Phase 1 default)
@@ -321,39 +320,6 @@ function addTVC(g, y, stageR, engLen) {
     pU.position.set(Math.cos(a) * upperR, upperY, Math.sin(a) * upperR); g.add(pU);
     const pL = new THREE.Mesh(new THREE.SphereGeometry(actR * 2.2, 8, 8), actMat);
     pL.position.set(Math.cos(a) * lowerR, lowerY, Math.sin(a) * lowerR); g.add(pL);
-  }
-}
-
-/* ---------- delta fins ---------- */
-
-function addFins(g, baseY, R, numFins, engLen) {
-  const root = engLen * 0.9;
-  const span = R * 0.55;
-  const tip = root * 0.2;
-  const sw = root * 0.5;
-  const thick = R * 0.025;
-
-  const shape = new THREE.Shape();
-  shape.moveTo(R * 0.98, 0);
-  shape.lineTo(R * 0.98, root);
-  shape.lineTo(R + span, sw + tip);
-  shape.lineTo(R + span, sw);
-  shape.closePath();
-
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: thick, bevelEnabled: true,
-    bevelThickness: thick * 0.3, bevelSize: thick * 0.3, bevelSegments: 2,
-  });
-  const finMat = mat(C.fin, { metal: 0.55, rough: 0.2, coat: 0.4 });
-
-  for (let i = 0; i < numFins; i++) {
-    const mesh = new THREE.Mesh(geo, finMat);
-    mesh.position.z = -thick / 2;
-    const piv = new THREE.Group();
-    piv.add(mesh);
-    piv.rotation.y = (i / numFins) * Math.PI * 2;
-    piv.position.y = baseY;
-    g.add(piv);
   }
 }
 
@@ -1424,16 +1390,6 @@ function buildRocket(D) {
      fade-on-disassemble logic in setupRocketScene's tick() can
      find them all in one traverse. */
   shell.traverse((o) => { o.userData.shellMember = true; });
-
-  /* Fins on each engine cluster. We parent each fin set to its
-     OWN stage subgroup (not the root) so when that stage moves up
-     during the Explode animation, its fins move with it. The
-     previous version had all fins in a single root-level group,
-     which left them visually stranded over the lower stage's tank
-     once the stage above moved upward. */
-  addFins(stage1, s1bot,    D.stage1_radius, 4, sk(D, 1, 'engine_length'));
-  addFins(stage2, s2bot,    D.stage2_radius, 4, sk(D, 2, 'engine_length'));
-  addFins(stage3, s3engBot, D.stage3_radius, 3, sk(D, 3, 'engine_length'));
 
   /* Removable outer cover — the opaque "finished rocket" aeroshell.
      Built from the axial milestones computed above and parented to the

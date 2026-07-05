@@ -479,7 +479,6 @@ function RocketViewerModal({ onClose }) {
                 <Swatch color="#808088" label="Interstage" />
                 <Swatch color="#C9A55A" label="Payload" />
                 <Swatch color="rgba(220,220,230,0.5)" label="Fairing" />
-                <Swatch color="#666" label="Fins" />
               </div>
 
               {/* Bottom-right: rotation / view-mode toggles.
