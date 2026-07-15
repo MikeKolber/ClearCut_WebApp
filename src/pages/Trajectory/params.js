@@ -448,7 +448,7 @@ export const PRESETS = {
     // from the reference vehicle; if the insertion comes out elliptical
     // rather than circular, tune stage_3_timing_burn_1 / _coast / the
     // burn-2 remainder to circularise at the target altitude.
-    simulation_time: 3000,
+    simulation_time: 415,
     lat_launch: 6.76408,
     lon_launch: 81.82552,
     height_launch: 9500,
