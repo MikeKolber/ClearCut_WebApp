@@ -435,18 +435,29 @@ export const DEBRIS_PARAMS = {
  * this gets swapped for `GET /api/trajectory/presets/<name>`.
  */
 export const PRESETS = {
-  '140-500': {
-    name: '140-500',
-    simulation_time: 300,
-    lat_launch: 35,
-    lon_launch: -10,
+  'Sri Lanka SSO': {
+    name: 'Sri Lanka SSO',
+    // Southbound Sun-Synchronous ascent from a launch point off the
+    // south-east coast of Sri Lanka (6deg45'N, 81deg49'E). SSO is
+    // retrograde (inclination ~97.8deg at ~600 km), so the vehicle
+    // flies SOUTH over the open Indian Ocean toward Antarctica — a
+    // clear over-water range that avoids overflying Asia. The launch
+    // azimuth is set explicitly (~188deg, just west of due south)
+    // because the auto-solver returns the northbound branch of the
+    // same inclination. Vehicle hardware + ascent timing are inherited
+    // from the reference vehicle; if the insertion comes out elliptical
+    // rather than circular, tune stage_3_timing_burn_1 / _coast / the
+    // burn-2 remainder to circularise at the target altitude.
+    simulation_time: 3000,
+    lat_launch: 6.76408,
+    lon_launch: 81.82552,
     height_launch: 9500,
-    initial_launch_azimuth_with_rotation: -70.6,
+    initial_launch_azimuth_with_rotation: 188,
     initial_role: 0,
     initial_speed: 210,
     initial_path_angle: 15,
-    desired_inclination: 140,
-    desired_orbit_height: 500,
+    desired_inclination: 97.8,
+    desired_orbit_height: 600,
     free_fall_timing: 5,
     pull_up_time: 34,
     pitch_command_delay_time: 0,
@@ -480,98 +491,8 @@ export const PRESETS = {
       unburned_propellant_fraction: 0.0117,
     },
   },
-  '105-700': {
-    name: '105-700',
-    simulation_time: 300,
-    lat_launch: 35,
-    lon_launch: -10,
-    height_launch: 9500,
-    initial_launch_azimuth_with_rotation: -21.5,
-    initial_role: 0,
-    initial_speed: 210,
-    initial_path_angle: 15,
-    desired_inclination: 105,
-    desired_orbit_height: 700,
-    free_fall_timing: 5,
-    pull_up_time: 33.3,
-    pitch_command_delay_time: 0,
-    coasting_s1_s2: 3,
-    stage_2_timing: 65,
-    coasting_s2_s3: 40,
-    stage_3_timing_total_burn: 200,
-    stage_3_timing_burn_1: 194.1,
-    stage_3_timing_coast: 2915,
-    no_of_stages: 3,
-    final_payload_mass: 325,
-    fairing_mass: 150,
-    rocket_diameter_cd: 1.5,
-    rocket_diameter_cl: 1.2,
-    Stage1: {
-      propellant_mass: 8100, structural_coefficient: 0.15, number_of_engines: 9,
-      stage_burn_time: 70, fuel_type: 'Jet-A(L)', oxidizer_type: 'HTP90',
-      desired_operating_pressure: 80, area_ratio: 20, efficiency: 0.97,
-      unburned_propellant_fraction: 0.01,
-    },
-    Stage2: {
-      propellant_mass: 3315, structural_coefficient: 0.14, number_of_engines: 3,
-      stage_burn_time: 65, fuel_type: 'Jet-A(L)', oxidizer_type: 'HTP90',
-      desired_operating_pressure: 80, area_ratio: 40, efficiency: 0.97,
-      unburned_propellant_fraction: 0.01,
-    },
-    Stage3: {
-      propellant_mass: 1135, structural_coefficient: 0.1, number_of_engines: 1,
-      stage_burn_time: 200, fuel_type: 'Jet-A(L)', oxidizer_type: 'HTP90',
-      desired_operating_pressure: 50, area_ratio: 60, efficiency: 0.97,
-      unburned_propellant_fraction: 0.01,
-    },
-  },
-  '140-700': {
-    name: '140-700',
-    simulation_time: 300,
-    lat_launch: 35,
-    lon_launch: -10,
-    height_launch: 9500,
-    initial_launch_azimuth_with_rotation: -70.6,
-    initial_role: 0,
-    initial_speed: 210,
-    initial_path_angle: 15,
-    desired_inclination: 140,
-    desired_orbit_height: 700,
-    free_fall_timing: 5,
-    pull_up_time: 33.7,
-    pitch_command_delay_time: 0,
-    coasting_s1_s2: 3,
-    stage_2_timing: 65,
-    coasting_s2_s3: 40,
-    stage_3_timing_total_burn: 200,
-    stage_3_timing_burn_1: 194.2,
-    stage_3_timing_coast: 2980,
-    no_of_stages: 3,
-    final_payload_mass: 285,
-    fairing_mass: 150,
-    rocket_diameter_cd: 1.5,
-    rocket_diameter_cl: 1.2,
-    Stage1: {
-      propellant_mass: 8100, structural_coefficient: 0.15, number_of_engines: 9,
-      stage_burn_time: 70, fuel_type: 'Jet-A(L)', oxidizer_type: 'HTP90',
-      desired_operating_pressure: 80, area_ratio: 20, efficiency: 0.97,
-      unburned_propellant_fraction: 0.01,
-    },
-    Stage2: {
-      propellant_mass: 3315, structural_coefficient: 0.14, number_of_engines: 3,
-      stage_burn_time: 65, fuel_type: 'Jet-A(L)', oxidizer_type: 'HTP90',
-      desired_operating_pressure: 80, area_ratio: 40, efficiency: 0.97,
-      unburned_propellant_fraction: 0.01,
-    },
-    Stage3: {
-      propellant_mass: 1135, structural_coefficient: 0.1, number_of_engines: 1,
-      stage_burn_time: 200, fuel_type: 'Jet-A(L)', oxidizer_type: 'HTP90',
-      desired_operating_pressure: 50, area_ratio: 60, efficiency: 0.97,
-      unburned_propellant_fraction: 0.011,
-    },
-  },
-  'negev-140-500': {
-    name: 'negev-140-500',
+  'Negev Reference': {
+    name: 'Negev Reference',
     simulation_time: 3000,
     lat_launch: 30.5,
     lon_launch: 34.8,
@@ -617,9 +538,9 @@ export const PRESETS = {
   },
 };
 
-/** 140-500 preset is the initial form state so the page has real numbers
- *  to display before the user picks a preset of their own. */
-export const DEFAULT_PRESET = PRESETS['140-500'];
+/** Sri Lanka SSO preset is the initial form state so the page has real
+ *  numbers to display before the user picks a preset of their own. */
+export const DEFAULT_PRESET = PRESETS['Sri Lanka SSO'];
 
 export const STAGE_ACCENTS = {
   1: { color: 'var(--accent)',         soft: 'rgba(77, 168, 218, 0.10)' },
