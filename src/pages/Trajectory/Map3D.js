@@ -1,8 +1,10 @@
 import React, {
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   forwardRef,
 } from 'react';
 import { Deck, MapView, _GlobeView as GlobeView } from '@deck.gl/core';
@@ -166,6 +168,25 @@ const Map3D = forwardRef(function Map3D(
     });
   };
 
+  /* ── compass / orientation state (mercator tilt + rotate) ────
+   * `orientation` mirrors the live bearing + pitch so the on-screen
+   * compass control can rotate with the map and the reset-north
+   * button can show only when the view is actually turned/tilted.
+   * It's kept in a ref too so `syncOrientation` can skip redundant
+   * setState calls during a drag (which fires many view-state
+   * changes per second). Rounded to whole degrees for the same
+   * reason — sub-degree jitter shouldn't trigger re-renders. */
+  const [orientation, setOrientation] = useState({ bearing: 0, pitch: 0 });
+  const orientationRef = useRef({ bearing: 0, pitch: 0 });
+  const syncOrientation = useCallback((bearing, pitch) => {
+    const b = Math.round((((bearing || 0) % 360) + 360) % 360);
+    const p = Math.round(pitch || 0);
+    const prev = orientationRef.current;
+    if (prev.bearing === b && prev.pitch === p) return;
+    orientationRef.current = { bearing: b, pitch: p };
+    setOrientation({ bearing: b, pitch: p });
+  }, []);
+
   /* ── view-state mutators ──────────────────────────────────── */
   const applyViewState = (next, animated = true) => {
     const merged = { ...viewStateRef.current, ...next };
@@ -174,6 +195,14 @@ const Map3D = forwardRef(function Map3D(
     if (deckRef.current) {
       deckRef.current.setProps({ initialViewState: merged });
     }
+    // Programmatic camera moves (fit / reset / flyTo) don't fire
+    // onViewStateChange, so keep the compass honest here too.
+    if (isMercator) syncOrientation(merged.bearing, merged.pitch);
+  };
+
+  /* Reset to Google-Maps "north up, flat" — the compass button. */
+  const resetNorth = () => {
+    applyViewState({ bearing: 0, pitch: 0 });
   };
 
   /* ── Idle auto-spin ──────────────────────────────────────────
@@ -736,15 +765,19 @@ const Map3D = forwardRef(function Map3D(
 
     const controller = isMercator
       ? {
-          // Top-down 2D map. Pitch is locked to 0 so trajectory
-          // altitudes don't visually float above the surface — we want
-          // a flat ground track in this mode. Bearing also locked.
+          // Flat (web-Mercator) map — the same projection Google Maps
+          // uses, so tilt + rotate are robust here (unlike the GlobeView
+          // branch below, which flips at the poles when rotated). Google-
+          // Maps-style controls: left-drag pans, right-drag (or
+          // ctrl/two-finger drag) tilts + rotates. Pitch is capped at 60°
+          // so the horizon never climbs past the top of the frame.
           scrollZoom: { speed: 0.015, smooth: true },
           minZoom: 0,
           maxZoom: 14,
           minPitch: 0,
-          maxPitch: 0,
-          dragRotate: false,
+          maxPitch: 60,
+          dragRotate: true,
+          touchRotate: true,
         }
       : {
           // Custom controller config for GlobeView. Tight bounds on
@@ -808,19 +841,22 @@ const Map3D = forwardRef(function Map3D(
         //   pitch ∈ [0, 60]   — past 60° the camera tilt is steep
         //                       enough that the look-at point can sit
         //                       behind the visible hemisphere.
-        //   bearing forced 0  — north-up only. Coupled with high lat,
-        //                       any non-zero bearing puts the camera
-        //                       on the wrong side of the globe.
+        //   bearing: free in mercator (Google-Maps-style rotate), still
+        //            forced 0 on the globe where non-zero bearing at
+        //            high latitude flips the camera behind the planet.
         const lat = Number.isFinite(viewState.latitude) ? viewState.latitude : 0;
         const pitch = Number.isFinite(viewState.pitch) ? viewState.pitch : 0;
+        const bearing = Number.isFinite(viewState.bearing) ? viewState.bearing : 0;
         const clamped = isMercator
           ? {
               ...viewState,
               // Mercator can't render the poles (math goes singular at
               // ±90). 85° on each side is the standard browser-map cap.
               latitude: Math.max(-85, Math.min(85, lat)),
-              pitch: 0,
-              bearing: 0,
+              // Google-Maps-style tilt + rotate: keep the user's pitch
+              // (capped) and bearing instead of forcing a flat north-up view.
+              pitch: Math.max(0, Math.min(60, pitch)),
+              bearing,
             }
           : {
               ...viewState,
@@ -828,6 +864,13 @@ const Map3D = forwardRef(function Map3D(
               pitch: Math.max(0, Math.min(60, pitch)),
               bearing: 0,
             };
+        // Surface the live orientation to React (mercator only) so the
+        // compass control can rotate + the reset button can show/hide.
+        // Rounded so a tiny sub-degree jitter during a drag doesn't spam
+        // re-renders.
+        if (isMercator) {
+          syncOrientation(clamped.bearing, clamped.pitch);
+        }
         viewStateRef.current = clamped;
         deck.setProps({ initialViewState: clamped });
       },
@@ -914,6 +957,51 @@ const Map3D = forwardRef(function Map3D(
           separate from the React-managed siblings (stars, attribution)
           so React's reconciler never tries to remove the canvas. */}
       <div ref={containerRef} className="MV-canvas-3d-mount" />
+
+      {/* Google-Maps-style compass — Flat mode only. The needle points
+          to true north (red half), rotating with the map; the whole
+          control tilts to hint at the current pitch. Click to snap back
+          to north-up + flat. Highlighted only when the view is actually
+          turned or tilted, so it stays out of the way otherwise. */}
+      {isMercator && (
+        <button
+          type="button"
+          className={
+            'MV-compass' +
+            ((orientation.bearing !== 0 || orientation.pitch !== 0)
+              ? ' MV-compass--active'
+              : '')
+          }
+          onClick={resetNorth}
+          title="Reset north (removes tilt & rotation)"
+          aria-label="Reset bearing to north and remove tilt"
+        >
+          <svg
+            viewBox="0 0 44 44"
+            width="40"
+            height="40"
+            aria-hidden
+            style={{ transform: `rotate(${-orientation.bearing}deg)` }}
+          >
+            {/* North half — red, points to true north */}
+            <polygon points="22,7 28,24 22,20 16,24" fill="#ff5a5a" />
+            {/* South half — muted grey */}
+            <polygon points="22,37 16,20 22,24 28,20" fill="#9aa3b2" />
+            {/* North tick label */}
+            <text
+              x="22"
+              y="6"
+              textAnchor="middle"
+              fontSize="7"
+              fontWeight="700"
+              fill="#e8eefc"
+            >
+              N
+            </text>
+          </svg>
+        </button>
+      )}
+
       <span className="MV-attrib mono" aria-hidden>
         {isMercator ? TILE_ATTRIBUTION_MERCATOR : TILE_ATTRIBUTION_GLOBE}
       </span>
